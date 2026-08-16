@@ -1,0 +1,183 @@
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/.github/workflows/ci.yml fw/firewall-dashboard/.github/workflows/ci.yml
+--- a/.github/workflows/ci.yml	2026-08-16 16:36:31.000000000 +0000
++++ b/.github/workflows/ci.yml	2026-08-16 17:25:52.237279950 +0000
+@@ -5,6 +5,10 @@
+     branches: [main]
+   pull_request:
+ 
++# Minimo privilegio: ningun job de este workflow escribe en el repositorio.
++permissions:
++  contents: read
++
+ # Los tests marcados `requires_iptables` NO corren aqui: necesitan privilegios de
+ # red reales. Se ejecutan dentro de la VM (bloque B5). Lo que CI garantiza es que
+ # todo lo construible sin privilegios esta verde.
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/Makefile fw/firewall-dashboard/Makefile
+--- a/Makefile	2026-08-16 16:35:46.000000000 +0000
++++ b/Makefile	2026-08-16 17:25:48.537279730 +0000
+@@ -5,6 +5,11 @@
+ FRONTEND := frontend
+ VM       := firewall-lab
+ 
++# El proyecto usa StrEnum, que existe a partir de 3.11. En macOS el `python3` del
++# sistema suele ser 3.9: si es tu caso, instala 3.12 (`brew install python@3.12`)
++# y lanza `make install PYTHON=python3.12`.
++PYTHON ?= python3
++
+ .PHONY: help
+ help: ## Muestra esta ayuda
+ 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+@@ -16,7 +21,10 @@
+ 
+ .PHONY: install
+ install: ## Instala dependencias de backend y frontend
+-	cd $(BACKEND) && python3 -m venv .venv && . .venv/bin/activate && pip install -e ".[dev]"
++	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
++		|| { echo "ERROR: se necesita Python 3.11+. Prueba: make install PYTHON=python3.12"; exit 1; }
++	cd $(BACKEND) && $(PYTHON) -m venv .venv && . .venv/bin/activate \
++		&& pip install --upgrade pip && pip install -e ".[dev]"
+ 	cd $(FRONTEND) && npm install
+ 
+ .PHONY: dev-backend
+Only in fw/firewall-dashboard/backend: .mypy_cache
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/alembic/env.py fw/firewall-dashboard/backend/alembic/env.py
+--- a/backend/alembic/env.py	2026-08-16 16:34:29.000000000 +0000
++++ b/backend/alembic/env.py	2026-08-16 17:24:23.809274694 +0000
+@@ -13,9 +13,10 @@
+ 
+ from logging.config import fileConfig
+ 
+-from alembic import context
+ from sqlalchemy import engine_from_config, pool
+ 
++from alembic import context
++
+ # from app.core.config import get_settings
+ # from app.db.base import Base
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/firewall/base.py fw/firewall-dashboard/backend/app/firewall/base.py
+--- a/backend/app/firewall/base.py	2026-08-16 16:31:38.000000000 +0000
++++ b/backend/app/firewall/base.py	2026-08-16 17:24:23.809274694 +0000
+@@ -17,7 +17,8 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Protocol, Sequence, runtime_checkable
++from collections.abc import Sequence
++from typing import Protocol, runtime_checkable
+ 
+ from app.firewall.spec import ApplyResult, Chain, Counters, NativeRule, RuleSpec
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/firewall/fake.py fw/firewall-dashboard/backend/app/firewall/fake.py
+--- a/backend/app/firewall/fake.py	2026-08-16 16:32:06.000000000 +0000
++++ b/backend/app/firewall/fake.py	2026-08-16 17:24:23.809274694 +0000
+@@ -25,7 +25,7 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Sequence
++from collections.abc import Sequence
+ 
+ from app.firewall.spec import ApplyResult, Chain, Counters, NativeRule, RuleSpec
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/firewall/iptables.py fw/firewall-dashboard/backend/app/firewall/iptables.py
+--- a/backend/app/firewall/iptables.py	2026-08-16 16:32:38.000000000 +0000
++++ b/backend/app/firewall/iptables.py	2026-08-16 17:24:23.813274694 +0000
+@@ -15,7 +15,7 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Sequence
++from collections.abc import Sequence
+ 
+ from app.firewall.runner import CommandRunner
+ from app.firewall.spec import ApplyResult, Chain, Counters, NativeRule, RuleSpec
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/firewall/renderer.py fw/firewall-dashboard/backend/app/firewall/renderer.py
+--- a/backend/app/firewall/renderer.py	2026-08-16 16:32:19.000000000 +0000
++++ b/backend/app/firewall/renderer.py	2026-08-16 17:24:23.821274695 +0000
+@@ -16,7 +16,7 @@
+ 
+ from __future__ import annotations
+ 
+-from typing import Sequence
++from collections.abc import Sequence
+ 
+ from app.firewall.spec import Chain, RuleSpec
+ 
+@@ -31,7 +31,9 @@
+     raise NotImplementedError("TODO(A3)")
+ 
+ 
+-def render_guard_rules(chain: Chain, *, management_port: int, management_cidr: str) -> list[list[str]]:
++def render_guard_rules(
++    chain: Chain, *, management_port: int, management_cidr: str
++) -> list[list[str]]:
+     """Reglas guardian de una cadena. Ver la tabla de docs/ARCHITECTURE.md §0.
+ 
+     INPUT   : ESTABLISHED,RELATED + lo + puerto de gestion desde management_cidr
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/firewall/runner.py fw/firewall-dashboard/backend/app/firewall/runner.py
+--- a/backend/app/firewall/runner.py	2026-08-16 16:31:54.000000000 +0000
++++ b/backend/app/firewall/runner.py	2026-08-16 17:24:23.813274694 +0000
+@@ -20,8 +20,9 @@
+ 
+ from __future__ import annotations
+ 
++from collections.abc import Sequence
+ from dataclasses import dataclass
+-from typing import Protocol, Sequence
++from typing import Protocol
+ 
+ DEFAULT_TIMEOUT_SECONDS = 10.0
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/app/main.py fw/firewall-dashboard/backend/app/main.py
+--- a/backend/app/main.py	2026-08-16 16:32:55.000000000 +0000
++++ b/backend/app/main.py	2026-08-16 17:24:23.813274694 +0000
+@@ -15,7 +15,7 @@
+ 
+ from fastapi import FastAPI
+ 
+-__all__ = ["create_app", "app"]
++__all__ = ["app", "create_app"]
+ 
+ 
+ def create_app() -> FastAPI:
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/pyproject.toml fw/firewall-dashboard/backend/pyproject.toml
+--- a/backend/pyproject.toml	2026-08-16 16:34:01.000000000 +0000
++++ b/backend/pyproject.toml	2026-08-16 17:25:21.297278111 +0000
+@@ -2,7 +2,8 @@
+ name = "firewall-dashboard-backend"
+ version = "0.0.1"
+ description = "Backend FastAPI para la gestion de reglas de iptables con dashboard web."
+-readme = "../README.md"
++# Sin `readme`: setuptools rechaza rutas fuera del directorio del proyecto
++# (`../README.md` -> DistutilsOptionError). El README vive en la raiz del repo.
+ requires-python = ">=3.11"
+ license = { text = "MIT" }
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/tests/unit/test_architecture.py fw/firewall-dashboard/backend/tests/unit/test_architecture.py
+--- a/backend/tests/unit/test_architecture.py	2026-08-16 16:33:31.000000000 +0000
++++ b/backend/tests/unit/test_architecture.py	2026-08-16 17:24:29.057275006 +0000
+@@ -24,9 +24,8 @@
+         if isinstance(node, ast.Import):
+             for alias in node.names:
+                 found.add(alias.name.split(".")[0])
+-        elif isinstance(node, ast.ImportFrom):
+-            if node.module and node.level == 0:
+-                found.add(node.module.split(".")[0])
++        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
++            found.add(node.module.split(".")[0])
+     return found
+ 
+ 
+diff -ru '--exclude=__pycache__' '--exclude=.pytest_cache' '--exclude=.ruff_cache' '--exclude=.venv' '--exclude=*.egg-info' orig/firewall-dashboard/backend/tests/unit/test_smoke.py fw/firewall-dashboard/backend/tests/unit/test_smoke.py
+--- a/backend/tests/unit/test_smoke.py	2026-08-16 16:33:45.000000000 +0000
++++ b/backend/tests/unit/test_smoke.py	2026-08-16 17:24:23.809274694 +0000
+@@ -22,7 +22,7 @@
+     for info in pkgutil.walk_packages(app_package.__path__, prefix="app."):
+         try:
+             importlib.import_module(info.name)
+-        except Exception as exc:  # noqa: BLE001 - queremos ver todos los fallos juntos
++        except Exception as exc:
+             fallos.append(f"{info.name}: {exc}")
+     assert not fallos, "Modulos que no importan:\n" + "\n".join(fallos)
+ 

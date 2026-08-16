@@ -1,0 +1,46 @@
+# =========================================================================== #
+# firewall-dashboard — permisos de sudo para el usuario de servicio
+#
+#   PLANTILLA. NO se instala automáticamente. Revísala antes de copiarla.
+#
+# Instalación:
+#   sudo cp infra/sudoers.d/firewall-dashboard /etc/sudoers.d/firewall-dashboard
+#   sudo chmod 0440 /etc/sudoers.d/firewall-dashboard
+#   sudo visudo -c -f /etc/sudoers.d/firewall-dashboard
+#
+# El `visudo -c` NO es opcional: un error de sintaxis aquí puede dejar la máquina
+# sin sudo. Ten una segunda terminal con sesión de root abierta mientras lo tocas.
+#
+# --------------------------------------------------------------------------- #
+# AVISO IMPORTANTE — léelo antes de usar esto
+#
+# Esta configuración es la OPCIÓN A del ADR-0003, y es la menos segura de las dos.
+# Conceder `NOPASSWD` sobre iptables completo equivale, en la práctica, a conceder
+# root:
+#
+#   - `iptables-restore` reescribe la política entera desde stdin
+#   - targets como NFQUEUE o TEE redirigen tráfico a procesos arbitrarios
+#   - sudoers restringe QUÉ BINARIO se ejecuta, no QUÉ HACE
+#
+# La opción recomendada es CAP_NET_ADMIN vía systemd — ver
+# infra/systemd/firewall-dashboard.service y docs/adr/0003-*.md.
+#
+# Usa este archivo solo para desarrollo dentro de la VM de laboratorio.
+# =========================================================================== #
+
+# Rutas ABSOLUTAS a propósito: un alias con ruta relativa permitiría sustituir el
+# binario manipulando el PATH.
+Cmnd_Alias FWDASH_CMDS = /usr/sbin/iptables, \
+                         /usr/sbin/iptables-save, \
+                         /usr/sbin/iptables-restore
+
+fwdash ALL=(root) NOPASSWD: FWDASH_CMDS
+
+# El servicio no tiene TTY.
+Defaults!FWDASH_CMDS !requiretty
+
+# Sin variables de entorno heredadas del proceso llamante.
+Defaults!FWDASH_CMDS env_reset
+
+# Registro de cada invocación, para complementar la auditoría de la aplicación.
+Defaults!FWDASH_CMDS log_output

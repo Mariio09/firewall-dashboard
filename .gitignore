@@ -1,0 +1,87 @@
+# --------------------------------------------------------------------------- #
+# Python
+# --------------------------------------------------------------------------- #
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+dist/
+build/
+*.egg-info/
+
+# --------------------------------------------------------------------------- #
+# Entorno y secretos
+#
+# El motivo del proyecto entero es la seguridad, asi que esta seccion es la que
+# de verdad importa. Un JWT_SECRET_KEY filtrado en el historial de git no se
+# arregla con un commit: hay que rotarlo.
+# --------------------------------------------------------------------------- #
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+secrets/
+credentials.json
+
+# --------------------------------------------------------------------------- #
+# Base de datos
+#
+# El .db contiene las IPs reales de tu red domestica y los hashes de usuarios.
+# No es un artefacto de build: es informacion personal.
+# --------------------------------------------------------------------------- #
+*.db
+*.db-journal
+*.sqlite
+*.sqlite3
+data/
+
+# --------------------------------------------------------------------------- #
+# Volcados de iptables
+#
+# Un `iptables-save` es un mapa de la topologia de tu red. No se versiona.
+# Excepcion: las fixtures de test, que se anonimizan a mano antes de commitear.
+# --------------------------------------------------------------------------- #
+*.rules
+iptables-backup-*
+iptables-save-*
+!backend/tests/fixtures/iptables_output/*
+
+# --------------------------------------------------------------------------- #
+# VM / Multipass
+# --------------------------------------------------------------------------- #
+.multipass/
+*.cloud-init.local.yaml
+infra/**/*.local.*
+
+# --------------------------------------------------------------------------- #
+# Node / frontend
+# --------------------------------------------------------------------------- #
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --------------------------------------------------------------------------- #
+# macOS y editores
+# --------------------------------------------------------------------------- #
+.DS_Store
+.AppleDouble
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+*~

@@ -1,0 +1,58 @@
+# =========================================================================== #
+# cloud-init para la VM firewall-lab
+#
+#   multipass launch --name firewall-lab --cpus 2 --memory 2G --disk 10G \
+#                    --cloud-init infra/cloud-init.yaml
+#
+# ESTE ARCHIVO SE VERSIONA, asi que NO puede contener secretos.
+# Si necesitas añadir una clave SSH, copia esto a `infra/cloud-init.local.yaml`
+# (ignorado por git) y usa esa copia.
+# =========================================================================== #
+#cloud-config
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - python3-venv
+  - python3-pip
+  - iptables
+  - curl
+  - jq
+  - net-tools
+
+write_files:
+  # Recordatorio dentro de la propia VM. Cuando te bloqueas, es el momento en que
+  # menos ganas tienes de buscar documentacion.
+  - path: /etc/motd
+    permissions: "0644"
+    content: |
+
+      ===========================================================
+       firewall-lab — laboratorio de firewall-dashboard
+      ===========================================================
+
+       Esta VM ejecuta iptables de verdad. Puedes bloquearte.
+
+       Si te quedas sin acceso por red, esta shell sigue
+       funcionando: multipass NO pasa por TCP.
+
+       Reset de emergencia:
+         sudo bash /home/ubuntu/app/infra/scripts/panic_reset.sh
+
+       Documentacion: /home/ubuntu/app/docs/RUNBOOK.md
+      ===========================================================
+
+runcmd:
+  # No se toca la politica de iptables desde aqui a proposito: la gestiona la
+  # aplicacion, y hacerlo en dos sitios es como se generan las divergencias.
+  - [mkdir, -p, /var/lib/firewall-dashboard]
+  - [bash, -c, "echo 'firewall-lab provisionada.' > /var/log/firewall-lab-init.log"]
+
+final_message: |
+  firewall-lab lista tras $UPTIME segundos.
+
+  Siguientes pasos, desde el Mac:
+    make vm-mount     # montar el repositorio
+    make vm-ip        # anotar la IP para el .env
+    make recon        # paso A2: capturar fixtures (solo lectura)
