@@ -21,10 +21,16 @@ help: ## Muestra esta ayuda
 
 .PHONY: install
 install: ## Instala dependencias de backend y frontend
-	@$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
-		|| { echo "ERROR: se necesita Python 3.11+. Prueba: make install PYTHON=python3.12"; exit 1; }
-	cd $(BACKEND) && $(PYTHON) -m venv .venv && . .venv/bin/activate \
-		&& pip install --upgrade pip && pip install -e ".[dev]"
+	@if command -v uv >/dev/null 2>&1; then \
+		echo "-> uv detectado, usandolo (evita ensurepip)"; \
+		cd $(BACKEND) && uv venv --python 3.12 .venv \
+			&& uv pip install --python .venv/bin/python -e ".[dev]"; \
+	else \
+		$(PYTHON) -c 'import sys; sys.exit(0 if sys.version_info >= (3, 11) else 1)' \
+			|| { echo "ERROR: se necesita Python 3.11+ o uv (brew install uv)"; exit 1; }; \
+		cd $(BACKEND) && $(PYTHON) -m venv .venv && . .venv/bin/activate \
+			&& pip install --upgrade pip && pip install -e ".[dev]"; \
+	fi
 	cd $(FRONTEND) && npm install
 
 .PHONY: dev-backend
