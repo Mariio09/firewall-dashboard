@@ -69,6 +69,10 @@ migrate: ## Aplica las migraciones pendientes
 migration: ## Crea una migracion nueva:  make migration m="add rules table"
 	cd $(BACKEND) && . .venv/bin/activate && alembic revision --autogenerate -m "$(m)"
 
+.PHONY: seed
+seed: ## Crea el administrador inicial (idempotente). Necesita la DB migrada.
+	cd $(BACKEND) && . .venv/bin/activate && python -m app.db.seed
+
 # --------------------------------------------------------------------------- #
 # Bloque A2 / B — la VM
 # --------------------------------------------------------------------------- #

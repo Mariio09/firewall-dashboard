@@ -49,7 +49,19 @@ repos:
         additional_dependencies: ["bandit[toml]"]
         files: ^backend/app/
 
-  - repo: https://github.com/gitleaks/gitleaks
-    rev: v8.21.2
+  # gitleaks se invoca como binario del sistema, NO desde su repo de pre-commit.
+  # El hook oficial es `language: golang`, asi que pre-commit se descarga un
+  # toolchain de Go entero la primera vez; el 2026-09-01 eso reventó el commit de
+  # A4 con un `SSL: UNEXPECTED_EOF_WHILE_READING` contra go.dev. El hook que no
+  # debe faltar nunca no puede ser tambien el mas fragil de instalar.
+  #
+  # Requisito: `brew install gitleaks` (gratis, sin cuenta).
+  # Si tu version es anterior a la 8.19, el subcomando es:
+  #   gitleaks protect --staged --redact --verbose
+  - repo: local
     hooks:
       - id: gitleaks
+        name: gitleaks (secretos en lo que vas a commitear)
+        entry: gitleaks git --pre-commit --staged --redact --verbose
+        language: system
+        pass_filenames: false

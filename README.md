@@ -143,6 +143,8 @@ make recon          # capturar fixtures de iptables (SOLO LECTURA)
 make help           # lista todo
 make test           # tests que no necesitan iptables
 make lint           # ruff + mypy + bandit
+make migrate        # aplica las migraciones
+make seed           # crea el administrador inicial (idempotente)
 make test-vm        # tests que sí lo necesitan (dentro de la VM)
 make panic          # emergencia: recuperar el acceso
 ```
@@ -151,7 +153,7 @@ make panic          # emergencia: recuperar el acceso
 
 | Bloque | Contenido | Estado |
 |---|---|---|
-| **A** | Aplicación completa contra firewall en memoria | 🟡 A0 hecho |
+| **A** | Aplicación completa contra firewall en memoria | 🟡 A0–A4 hechos: núcleo, capa `firewall/` y auth |
 | **B** | Capa de iptables real, privilegios, runbook | ⬜ |
 | **C** | Interconexión, drift real, recorrido completo | ⬜ |
 | Fase 2 | Logging de paquetes bloqueados, SQLite, rollback con confirmación | ⬜ |
