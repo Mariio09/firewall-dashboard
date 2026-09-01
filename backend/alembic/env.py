@@ -4,30 +4,36 @@ La URL de la base de datos se toma de `app.core.config`, no de `alembic.ini`: as
 existe una unica fuente de configuracion y no hay que mantener la cadena de
 conexion en dos sitios.
 
-TODO(A1): descomentar los imports una vez existan `app.core.config` y
-`app.db.base`, y activar `render_as_batch=True` — SQLite no soporta ALTER TABLE
-completo, y sin ese flag cualquier migracion que modifique una columna fallara.
+`render_as_batch=True` no es opcional con SQLite: no soporta `ALTER TABLE` completo,
+asi que Alembic recrea la tabla para cualquier cambio de columna o constraint. Sin
+ese flag, la primera migracion que modifique algo existente falla.
 """
 
 from __future__ import annotations
 
+import sys
 from logging.config import fileConfig
+from pathlib import Path
 
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
 
-# from app.core.config import get_settings
-# from app.db.base import Base
+# `alembic` se invoca desde `backend/`, pero no necesariamente con esa ruta en
+# el PYTHONPATH (por ejemplo al lanzarlo desde la raiz del repo o desde la VM).
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+import app.models  # noqa: F401  -> importar los modelos puebla Base.metadata
+from app.core.config import get_settings
+from app.db.base import Base
 
 config = context.config
 
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-# config.set_main_option("sqlalchemy.url", get_settings().database_url)
-# target_metadata = Base.metadata
-target_metadata = None
+config.set_main_option("sqlalchemy.url", get_settings().database_url)
+target_metadata = Base.metadata
 
 
 def run_migrations_offline() -> None:
@@ -38,6 +44,8 @@ def run_migrations_offline() -> None:
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
         render_as_batch=True,
+        # Sin esto, autogenerate ignora los cambios de tipo de una columna.
+        compare_type=True,
     )
     with context.begin_transaction():
         context.run_migrations()
@@ -55,6 +63,7 @@ def run_migrations_online() -> None:
             connection=connection,
             target_metadata=target_metadata,
             render_as_batch=True,  # imprescindible en SQLite
+            compare_type=True,
         )
         with context.begin_transaction():
             context.run_migrations()
