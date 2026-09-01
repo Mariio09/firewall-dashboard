@@ -89,15 +89,45 @@ vm-shell: ## Abre una shell en la VM (NO pasa por TCP: funciona aunque cierres l
 vm-ip: ## Muestra la IP de la VM
 	@multipass info $(VM) | grep IPv4 | awk '{print $$2}'
 
+FIXTURES := $(BACKEND)/tests/fixtures/iptables_output
+IPT      := sudo env LC_ALL=C iptables
+
 .PHONY: recon
-recon: ## Paso A2: captura salidas reales de iptables como fixtures (SOLO LECTURA)
-	@echo "Capturando fixtures desde $(VM)... (ningun comando modifica reglas)"
-	@mkdir -p $(BACKEND)/tests/fixtures/iptables_output
-	multipass exec $(VM) -- sudo iptables -S            > $(BACKEND)/tests/fixtures/iptables_output/save_default.txt
-	multipass exec $(VM) -- sudo iptables -L -v -n      > $(BACKEND)/tests/fixtures/iptables_output/list_verbose.txt
-	multipass exec $(VM) -- sudo iptables --version     > $(BACKEND)/tests/fixtures/iptables_output/version.txt
-	-multipass exec $(VM) -- sudo iptables -S FWDASH_INPUT 2> $(BACKEND)/tests/fixtures/iptables_output/error_chain_missing.txt
-	@echo "Listo. Revisa y anonimiza las IPs antes de commitear."
+recon: recon-limpio recon-seed recon-cargado ## Paso A2: captura fixtures reales de iptables
+	@echo
+	@echo "Listo: $(FIXTURES)  (ver su README.md)"
+	@echo "Para dejar la VM como estaba:  make recon-reset"
+
+.PHONY: recon-limpio
+recon-limpio: ## A2 (1/3): captura el estado virgen de la VM. Solo lectura.
+	@echo "--- A2 1/3: estado limpio (ningun comando modifica reglas) ---"
+	@mkdir -p $(FIXTURES)/limpio
+	multipass exec $(VM) -- $(IPT) --version    > $(FIXTURES)/version.txt
+	multipass exec $(VM) -- $(IPT) -S           > $(FIXTURES)/limpio/save.txt
+	multipass exec $(VM) -- $(IPT) -L -v -n     > $(FIXTURES)/limpio/list_verbose.txt
+	@# Como falla cuando la cadena NO existe. Hay que capturarlo ANTES de sembrar,
+	@# porque despues la cadena existe y el comando deja de fallar.
+	-multipass exec $(VM) -- $(IPT) -S FWDASH_INPUT > $(FIXTURES)/error_chain_missing.txt 2>&1
+
+.PHONY: recon-seed
+recon-seed: ## A2 (2/3): carga el ruleset representativo DENTRO de la VM
+	@echo "--- A2 2/3: sembrando (solo dentro de la VM; ver cabecera del script) ---"
+	multipass transfer infra/scripts/recon_seed.sh $(VM):/tmp/recon_seed.sh
+	multipass exec $(VM) -- sudo bash /tmp/recon_seed.sh
+
+.PHONY: recon-cargado
+recon-cargado: ## A2 (3/3): captura con el ruleset cargado. Solo lectura.
+	@echo "--- A2 3/3: estado cargado (ningun comando modifica reglas) ---"
+	@mkdir -p $(FIXTURES)/cargado
+	multipass exec $(VM) -- $(IPT) -S           > $(FIXTURES)/cargado/save.txt
+	multipass exec $(VM) -- $(IPT) -L -v -n     > $(FIXTURES)/cargado/list_verbose.txt
+	multipass exec $(VM) -- $(IPT) -L -v -n -x  > $(FIXTURES)/cargado/list_verbose_exact.txt
+	multipass exec $(VM) -- sudo env LC_ALL=C iptables-save > $(FIXTURES)/cargado/iptables_save.txt
+
+.PHONY: recon-reset
+recon-reset: ## Deshace en la VM lo que sembro `make recon`
+	multipass transfer infra/scripts/recon_seed.sh $(VM):/tmp/recon_seed.sh
+	multipass exec $(VM) -- sudo bash /tmp/recon_seed.sh reset
 
 .PHONY: test-vm
 test-vm: ## Tests que necesitan iptables real (ejecutar DENTRO de la VM)

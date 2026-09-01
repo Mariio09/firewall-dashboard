@@ -1,0 +1,40 @@
+Chain INPUT (policy ACCEPT 80 packets, 9345 bytes)
+    pkts      bytes target     prot opt in     out     source               destination         
+  500000 42000000 ACCEPT     icmp --  lo     *       0.0.0.0/0            0.0.0.0/0            /* recon-a2:contador */
+
+Chain FORWARD (policy DROP 0 packets, 0 bytes)
+    pkts      bytes target     prot opt in     out     source               destination         
+       0        0 FWDASH_FORWARD  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain OUTPUT (policy ACCEPT 1 packets, 144 bytes)
+    pkts      bytes target     prot opt in     out     source               destination         
+  500000 42000000 ACCEPT     icmp --  *      lo      0.0.0.0/0            0.0.0.0/0            /* recon-a2:contador */
+      50    17754 FWDASH_OUTPUT  all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain FWDASH_FORWARD (1 references)
+    pkts      bytes target     prot opt in     out     source               destination         
+       0        0 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED
+       0        0 ACCEPT     tcp  --  eth0   eth1    0.0.0.0/0            0.0.0.0/0            tcp dpt:443
+       0        0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain FWDASH_INPUT (0 references)
+    pkts      bytes target     prot opt in     out     source               destination         
+       0        0 ACCEPT     all  --  lo     *       0.0.0.0/0            0.0.0.0/0            /* fwdash:guardian:loopback */
+       0        0 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED /* fwdash:guardian:conntrack */
+       0        0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:22 /* fwdash:guardian:ssh */
+       0        0 ACCEPT     tcp  --  *      *       192.168.64.0/24      0.0.0.0/0            tcp dpt:8000 /* fwdash:1:api desde la red host-only */
+       0        0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            multiport dports 80,443,8443
+       0        0 ACCEPT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpts:30000:30010
+       0        0 DROP       tcp  --  *      *      !10.0.0.0/8           0.0.0.0/0            tcp dpt:3306
+       0        0 ACCEPT     udp  --  *      *       0.0.0.0/0            0.0.0.0/0            udp spts:1024:65535 dpt:53
+       0        0 ACCEPT     icmp --  *      *       0.0.0.0/0            0.0.0.0/0            icmptype 8 limit: avg 5/min burst 3
+       0        0 LOG        tcp  --  eth0   *       0.0.0.0/0            0.0.0.0/0            tcp dpt:23 LOG flags 0 level 4 prefix "FWDASH DROP telnet: "
+       0        0 REJECT     tcp  --  *      *       0.0.0.0/0            0.0.0.0/0            tcp dpt:23 reject-with icmp-port-unreachable
+       0        0 DROP       all  --  *      *       0.0.0.0/0            0.0.0.0/0           
+
+Chain FWDASH_OUTPUT (1 references)
+    pkts      bytes target     prot opt in     out     source               destination         
+       0        0 ACCEPT     all  --  *      lo      0.0.0.0/0            0.0.0.0/0            /* fwdash:guardian:loopback */
+      49    17610 ACCEPT     all  --  *      *       0.0.0.0/0            0.0.0.0/0            ctstate RELATED,ESTABLISHED
+       0        0 ACCEPT     udp  --  *      *       0.0.0.0/0            8.8.8.8              udp dpt:53
+       1      144 RETURN     all  --  *      *       0.0.0.0/0            0.0.0.0/0           

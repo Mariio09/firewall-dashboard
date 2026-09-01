@@ -8,8 +8,14 @@ repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
+      # Las fixtures de iptables son salidas literales: su espaciado ES el dato.
+      # `iptables -L -v -n` rellena las columnas con espacios al final de cada
+      # linea, y limpiarlos convertiria el test en una comprobacion contra un
+      # formato que iptables no produce.
       - id: trailing-whitespace
+        exclude: ^backend/tests/fixtures/iptables_output/.*\.txt$
       - id: end-of-file-fixer
+        exclude: ^backend/tests/fixtures/iptables_output/.*\.txt$
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
