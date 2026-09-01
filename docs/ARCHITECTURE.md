@@ -371,14 +371,24 @@ class RuleSpec:
     src_ip: str | None = None
     # ... resto de campos
 
+    #: uuid de la fila `rules`. Viaja en el --comment de la regla, y queda FUERA
+    #: de la comparación: la identidad no es parte de la semántica (ADR-0006).
+    rule_uuid: str | None = field(default=None, compare=False)
+
     def __post_init__(self) -> None:
-        validate_spec(self)   # se valida al construir
+        # Cada campo pasa por su validador y se guarda YA NORMALIZADO.
+        ...
 ```
 
 `RuleSpec` es inmutable, no conoce SQLAlchemy ni Pydantic, y **no se puede construir
 inválido**. Esa es la respuesta a "validación centralizada, no repartida por los
 endpoints": la validación no está en un sitio *por convención*, está en el único sitio
 por donde es posible pasar.
+
+Al implementarlo se añadió una propiedad más: `__post_init__` no solo valida, **normaliza**.
+`src_ip="1.2.3.4"` y `src_ip="1.2.3.4/32"` producen specs iguales, con el mismo hash, así
+que la detección de drift se calcula con operaciones de conjuntos
+([ADR-0006](adr/0006-comparar-reglas-por-estructura.md)).
 
 El flujo completo queda:
 
@@ -395,11 +405,15 @@ el contrato, el modelo protege la integridad, `RuleSpec` protege el sistema.
 ### 3.2 `validators.py` — todo el saneamiento, en un archivo
 
 ```python
-def validate_ip_or_cidr(value: str) -> str   # ipaddress.ip_network(strict=False) → str normalizado
-def validate_port_spec(value: str) -> str    # "80" | "8000:8010", 1..65535, inicio < fin
-def validate_interface(value: str) -> str    # ^[a-zA-Z0-9@._-]{1,15}$
-def validate_chain(value: str) -> Chain
-def validate_log_prefix(value: str) -> str   # ≤29 chars, sin comillas ni saltos
+def validate_ip_or_cidr(value, *, ip_version=4) -> str  # ip_network(strict=False) → normalizado
+def validate_port_spec(value) -> str         # "80" | "8000:8010", 1..65535, inicio < fin
+def validate_interface(value) -> str         # ^[A-Za-z0-9@._-]{1,15}$
+def validate_log_prefix(value) -> str        # ≤29 chars, sin comillas ni control
+def validate_comment(value) -> str           # ≤200 chars, el texto libre del --comment
+def validate_rule_uuid(value) -> str         # el uuid que viaja dentro del comentario
+def validate_chain / validate_action / validate_protocol / validate_ip_version
+def validate_managed_chain_name(prefix, chain) -> str   # "FWDASH" + INPUT → "FWDASH_INPUT"
+def validate_spec(spec) -> None              # las reglas cruzadas
 ```
 
 Cada uno lanza `InvalidRuleError` con un mensaje útil. Ninguna otra parte del código
@@ -432,17 +446,40 @@ no dependa del locale de la VM. Timeout siempre, porque un `iptables` colgado co
 ```python
 class FirewallBackend(Protocol):
     def ensure_scaffold(self) -> None: ...
-    def apply_ruleset(self, chain: str, specs: Sequence[RuleSpec]) -> ApplyResult: ...
-    def read_ruleset(self, chain: str) -> list[NativeRule]: ...
-    def read_counters(self, chain: str) -> dict[str, Counters]: ...
+    def apply_ruleset(
+        self, chain: Chain, specs: Sequence[RuleSpec], *, dry_run: bool = False
+    ) -> ApplyResult: ...
+    def read_ruleset(self, chain: Chain) -> list[NativeRule]: ...
+    def read_counters(self, chain: Chain) -> dict[str, Counters]: ...
     def teardown(self) -> None: ...
 ```
 
-Solo **una** operación de escritura, coherente con §0.
+Solo **una** operación de escritura, coherente con §0. `dry_run=True` devuelve los comandos
+que se ejecutarían sin ejecutar ninguno: es lo que alimenta `GET /firewall/preview`.
+
+`NativeRule` no es solo la línea leída. Lleva la `RuleSpec` equivalente cuando la regla cae
+dentro de lo que el modelo sabe expresar, y el motivo cuando no
+([ADR-0007](adr/0007-nativerule-lleva-la-spec-parseada.md)):
+
+```python
+@dataclass(frozen=True, slots=True)
+class NativeRule:
+    raw: str                      # la línea original, para poder enseñarla
+    chain: str
+    target: str | None = None
+    comment: str | None = None
+    rule_uuid: str | None = None  # los 8 caracteres que viajan en la etiqueta
+    log_prefix: str | None = None
+    counters: Counters = field(default_factory=Counters)
+    spec: RuleSpec | None = None
+    unsupported: tuple[str, ...] = ()   # "guardian", "multiport", "negacion"...
+```
 
 - `IptablesBackend`: recibe un `CommandRunner` por constructor.
-- `FakeFirewallBackend`: guarda las specs en una lista en memoria. Implementa el mismo
-  Protocol.
+- `FakeFirewallBackend`: guarda las specs en memoria, pero **no reimplementa el formato**:
+  renderiza con el renderer real y lee de vuelta con el parser real, así que no puede
+  inventarse un comportamiento propio. Lo único que finge es el sistema operativo de en
+  medio.
 
 **Cómo se testea sin iptables**, que era el requisito. Hay dos costuras, y cada una
 cubre una cosa:

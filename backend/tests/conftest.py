@@ -2,7 +2,7 @@
 
 Estado tras A1: configuracion de prueba, base de datos en memoria y cliente HTTP.
 
-TODO(A3): `fake_firewall` — instancia limpia de FakeFirewallBackend.
+Estado tras A3: `fake_firewall`, con las cadenas gestionadas ya creadas.
 TODO(A4): `auth_headers` — token valido de un usuario de prueba.
 """
 
@@ -22,6 +22,7 @@ from app.api.deps import get_db
 from app.core.config import Settings, get_settings
 from app.db.base import Base
 from app.db.session import create_db_engine
+from app.firewall.fake import FakeFirewallBackend
 from app.main import create_app
 
 BACKEND_ROOT = Path(__file__).resolve().parent.parent
@@ -127,3 +128,16 @@ def _limpiar_cache_de_settings() -> Iterator[None]:
     get_settings.cache_clear()
     yield
     get_settings.cache_clear()
+
+
+@pytest.fixture
+def fake_firewall() -> FakeFirewallBackend:
+    """Backend de firewall en memoria, con las cadenas gestionadas ya creadas.
+
+    Se devuelve ya "scaffoldeado" porque es el estado en el que la aplicacion lo
+    encuentra siempre: `ensure_scaffold()` corre en el arranque. Un test que
+    quiera probar el caso contrario construye el suyo.
+    """
+    backend = FakeFirewallBackend()
+    backend.ensure_scaffold()
+    return backend

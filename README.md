@@ -48,6 +48,18 @@ es exactamente el permiso necesario y nada más.
 `FIREWALL_BACKEND=fake|iptables`. El MVP completo se construye y se demuestra en
 macOS, sin VM y sin privilegios.
 
+**Las reglas se comparan por estructura, nunca por texto** ([ADR-0006](docs/adr/0006-comparar-reglas-por-estructura.md)).
+iptables reescribe cada regla al guardarla: `--dport 22` vuelve como
+`-p tcp -m tcp --dport 22`, `echo-request` vuelve como `8` y un `REJECT` vuelve con un
+`--reject-with` que nadie pidió. Un detector de drift que compare texto daría divergencia
+siempre, incluso justo después de aplicar. Se comparan `RuleSpec`, que se construyen
+normalizadas. Lo descubrió una expedición de reconocimiento a la VM **antes** de escribir
+el parser, y las salidas literales que capturó son hoy las fixtures de los tests.
+
+**Lo que el sistema dice y no se entiende, no se descarta** ([ADR-0007](docs/adr/0007-nativerule-lleva-la-spec-parseada.md)).
+Una regla dentro de una cadena gestionada que el modelo no sabe expresar es exactamente el
+drift que hay que detectar, así que el parser la devuelve marcada en vez de ignorarla.
+
 ### La contención contra inyección de comandos
 
 Es la amenaza principal de un proyecto que convierte formularios en comandos de
