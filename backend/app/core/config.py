@@ -57,7 +57,10 @@ class Settings(BaseSettings):
     # intenta parsear los campos complejos como JSON, asi que un
     # `CORS_ORIGINS=http://localhost:5173` en el `.env` reventaria al arrancar.
     # Se expone ya troceada en la propiedad `cors_origin_list`.
-    cors_origins: str = "http://localhost:5173"
+    # Los dos: Vite hace bind a 127.0.0.1 y anuncia esa URL, pero el
+    # navegador tambien llega por `localhost`. Son origenes DISTINTOS para
+    # CORS, y tener solo uno da un fallo que el navegador explica fatal.
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
 
     # --- Base de datos ------------------------------------------------------ #
     database_url: str = "sqlite:///./firewall.db"

@@ -41,6 +41,14 @@ dev-backend: ## Levanta el backend con FIREWALL_BACKEND=fake
 dev-frontend: ## Levanta el servidor de desarrollo de Vite
 	cd $(FRONTEND) && npm run dev
 
+.PHONY: gen-api
+gen-api: ## Regenera los tipos del frontend desde el OpenAPI (backend en marcha)
+	cd $(FRONTEND) && npm run gen:api
+
+.PHONY: front-check
+front-check: ## A6: levanta el backend, regenera tipos, typecheck, lint y build
+	bash infra/scripts/a6_verify.sh
+
 .PHONY: test
 test: ## Tests que no necesitan iptables (los que corren en el Mac)
 	cd $(BACKEND) && . .venv/bin/activate && pytest

@@ -132,7 +132,15 @@ npm install && npm run dev
 ```
 
 API en `http://127.0.0.1:8000` (documentación interactiva en `/docs`), frontend en
-`http://localhost:5173`.
+`http://127.0.0.1:5173`. Entra con el administrador que creó `make seed`.
+
+Los tipos del frontend salen del OpenAPI y están versionados, así que un clon limpio compila
+sin levantar nada. Cuando cambie un schema del backend, con el backend en marcha:
+
+```bash
+make gen-api      # regenera frontend/src/api/schema.d.ts
+make front-check  # backend + gen:api + typecheck + lint + build, todo de una
+```
 
 ### Bloque B/C — la VM
 
@@ -160,8 +168,8 @@ make panic          # emergencia: recuperar el acceso
 
 | Bloque | Contenido | Estado |
 |---|---|---|
-| **A** | Aplicación completa contra firewall en memoria | 🟡 A0–A4 hechos: núcleo, capa `firewall/` y auth |
-| **B** | Capa de iptables real, privilegios, runbook | ⬜ |
+| **A** | Aplicación completa contra firewall en memoria | ✅ **cerrado** — núcleo, capa `firewall/`, auth, API de reglas y frontend |
+| **B** | Capa de iptables real, privilegios, runbook | ⬜ ← siguiente |
 | **C** | Interconexión, drift real, recorrido completo | ⬜ |
 | Fase 2 | Logging de paquetes bloqueados, SQLite, rollback con confirmación | ⬜ |
 | Fase 3 | Dashboard con gráficas por IP / puerto / tiempo | ⬜ |
