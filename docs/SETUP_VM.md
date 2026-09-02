@@ -19,28 +19,6 @@ multipass version
 
 ## 1. Crear la VM
 
-### La vía corta: `make vm-provision` (paso B0)
-
-```bash
-make vm-provision 2>&1 | tee b0-verify.log
-```
-
-Recrea la VM desde cero con el cloud-init del repo, la monta y **comprueba el
-resultado**: que los paquetes están, que el `motd` y el directorio de datos se
-escribieron, que `python3` es 3.11+, que `iptables` sigue siendo la misma
-versión contra la que se escribió el parser, que la política nace virgen y que
-el montaje es de lectura y escritura en los dos sentidos.
-
-Es destructivo (`multipass delete --purge`) y **pide confirmación** antes de
-borrar nada. Las fixtures de A2 ya están en el repo, así que no se pierde nada
-del proyecto.
-
-> **Por qué recrear en vez de reutilizar.** Un `cloud-init.yaml` que nunca se ha
-> vuelto a ejecutar no es provisión reproducible, es un archivo que da la
-> casualidad de que existe. B0 lo ejecuta de verdad.
-
-### A mano
-
 ```bash
 make vm-create
 ```
@@ -48,14 +26,9 @@ make vm-create
 Equivale a:
 
 ```bash
-multipass launch 24.04 --name firewall-lab --cpus 2 --memory 2G --disk 10G \
+multipass launch --name firewall-lab --cpus 2 --memory 2G --disk 10G \
                  --cloud-init infra/cloud-init.yaml
 ```
-
-**La imagen se pinea a propósito.** `multipass launch` sin imagen usa el alias
-por defecto, que cambia cuando sale una LTS nueva; las fixtures del parser se
-capturaron contra una versión concreta de `iptables`. Para cambiarla:
-`make vm-create VM_IMAGE=24.10`.
 
 Comprobar:
 
@@ -113,19 +86,13 @@ tocarla hasta el bloque B.
 
 ### 4.1 Dependencias
 
-Lo hace el script de arranque, que además crea el usuario de servicio `fwdash`
-y el directorio de datos:
-
 ```bash
 multipass shell firewall-lab
-sudo bash /home/ubuntu/app/infra/scripts/bootstrap_vm.sh
+sudo apt update && sudo apt install -y python3-venv python3-pip iptables
+cd /home/ubuntu/app/backend
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev]"
 ```
-
-> `bootstrap_vm.sh` **no** instala los privilegios de iptables a propósito: eso
-> es el §4.2, y se aplica a mano después de leer el ADR-0003.
-
-Dentro de la VM sí se usa `python3 -m venv`: el `uv` del ADR-0005 es una
-decisión del **Mac**, donde `ensurepip` está roto. En Ubuntu el venv funciona.
 
 ### 4.2 Usuario de servicio y privilegios
 
