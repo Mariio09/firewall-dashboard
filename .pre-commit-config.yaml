@@ -22,8 +22,10 @@ repos:
         args: ["--maxkb=1000"]
       - id: check-merge-conflict
       - id: detect-private-key
+      # El tronco es `master` (2026-09-02). Se listan las dos ramas: `main` sigue
+      # existiendo como historia vieja y tampoco se commitea directamente.
       - id: no-commit-to-branch
-        args: ["--branch", "main"]
+        args: ["--branch", "master", "--branch", "main"]
 
   # Esta version tiene que ser LA MISMA que la de backend/pyproject.toml. Si se
   # separan, `make lint` y `pre-commit` se reformatean el codigo el uno al otro
