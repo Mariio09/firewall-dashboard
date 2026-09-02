@@ -4,6 +4,10 @@ SHELL := /bin/bash
 BACKEND  := backend
 FRONTEND := frontend
 VM       := firewall-lab
+# Imagen de la VM. Se PINEA a proposito: `multipass launch` sin imagen usa el
+# alias por defecto, que cambia con el tiempo, y las fixtures del parser (A2)
+# se capturaron contra una version concreta de iptables.
+VM_IMAGE ?= 24.04
 
 # El proyecto usa StrEnum, que existe a partir de 3.11. En macOS el `python3` del
 # sistema suele ser 3.9: si es tu caso, instala 3.12 (`brew install python@3.12`)
@@ -87,7 +91,12 @@ seed: ## Crea el administrador inicial (idempotente). Necesita la DB migrada.
 
 .PHONY: vm-create
 vm-create: ## Crea la VM firewall-lab
-	multipass launch --name $(VM) --cpus 2 --memory 2G --disk 10G --cloud-init infra/cloud-init.yaml
+	multipass launch $(VM_IMAGE) --name $(VM) --cpus 2 --memory 2G --disk 10G \
+		--cloud-init infra/cloud-init.yaml
+
+.PHONY: vm-provision
+vm-provision: ## B0: recrea la VM desde cloud-init, la monta y lo verifica todo
+	bash infra/scripts/b0_verify.sh
 
 .PHONY: vm-mount
 vm-mount: ## Monta este repositorio dentro de la VM
