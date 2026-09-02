@@ -10,10 +10,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import DateTime, Index, Integer, String, Text
+from sqlalchemy import Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import ADDRESS_LEN, Base, utcnow
+from app.db.base import ADDRESS_LEN, Base, UtcDateTime, utcnow
 
 __all__ = ["PacketLog"]
 
@@ -30,9 +30,7 @@ class PacketLog(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
-    ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True, nullable=False
-    )
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, index=True, nullable=False)
 
     src_ip: Mapped[str | None] = mapped_column(String(ADDRESS_LEN), nullable=True)
     dst_ip: Mapped[str | None] = mapped_column(String(ADDRESS_LEN), nullable=True)

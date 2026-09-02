@@ -42,6 +42,17 @@ credentials.json
 # --------------------------------------------------------------------------- #
 *.db
 *.db-journal
+# SQLite en modo WAL deja estos dos al lado del .db. Se colaron en el commit
+# de A5: son paginas de la base de datos, o sea su contenido en binario.
+*.db-wal
+*.db-shm
+
+# Artefactos del puente: FUSE deja un .fuse_hidden* cuando se borra o se
+# reemplaza un archivo que alguien tiene abierto.
+.fuse_hidden*
+
+# Logs de ejecucion (uvicorn, scripts de verificacion).
+*.log
 *.sqlite
 *.sqlite3
 data/

@@ -2,9 +2,11 @@
 
 Bloque A1+. Aqui viven dos cosas:
 
-- `get_firewall_backend()`, que devuelve `FakeFirewallBackend` o `IptablesBackend`
-  segun `settings.firewall_backend`. Esa unica funcion es lo que permite correr el
-  MVP completo en el Mac y lo que hace el bloque C casi trivial.
+- `build_firewall_backend()`, que devuelve `FakeFirewallBackend` o
+  `IptablesBackend` segun `settings.firewall_backend`, y `get_firewall_backend()`,
+  que guarda UNA instancia por aplicacion en `app.state`. Esas dos funciones son
+  lo que permite correr el MVP completo en el Mac y lo que hace el bloque C casi
+  trivial.
 - El RBAC (A4): `CurrentUser` resuelve el token en usuario, y `require_role()`
   fabrica la dependencia que exige un rol minimo. Un endpoint protegido se escribe
   poniendo `RequireOperator` en la firma, y no hay ninguna otra forma de hacerlo:
@@ -37,6 +39,7 @@ __all__ = [
     "RequireAdmin",
     "RequireOperator",
     "RequireViewer",
+    "build_firewall_backend",
     "get_client_ip",
     "get_current_user",
     "get_db",
@@ -81,21 +84,28 @@ def get_client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-def get_firewall_backend(
-    settings: Annotated[Settings, Depends(get_settings_dep)],
-) -> FirewallBackend:
-    """Devuelve el backend de firewall configurado.
+def build_firewall_backend(settings: Settings) -> FirewallBackend:
+    """Construye el backend de firewall configurado.
 
-    Estas seis lineas son la costura entera del proyecto (ADR-0004): con
+    Estas lineas son la costura entera del proyecto (ADR-0004): con
     `FIREWALL_BACKEND=fake` la aplicacion funciona de punta a punta en el Mac,
     sin VM y sin privilegios, y el bloque C consiste en cambiar esa variable.
+
+    Los parametros de las reglas guardian salen de `settings` y no de los valores
+    por defecto del fake: si el `.env` dice que la gestion escucha en el 8080, el
+    preview tiene que enseñar el 8080. Un fake configurado distinto que el real
+    es justo la clase de mentira contra la que avisa docs/ARCHITECTURE.md §8.
 
     `IptablesBackend` necesita un `CommandRunner` real, que es el bloque B2. Se
     construye ahi, no aqui, para no arrastrar `subprocess` a un import que
     ocurre tambien en el Mac.
     """
     if settings.firewall_backend == "fake":
-        return FakeFirewallBackend()
+        return FakeFirewallBackend(
+            chain_prefix=settings.managed_chain_prefix,
+            management_port=settings.management_port,
+            management_cidr=str(settings.management_allowed_cidr),
+        )
 
     # TODO(B2/B3): construir SubprocessRunner + IptablesBackend con los valores
     # de `settings` (iptables_bin, use_sudo, timeout, prefijo de cadena y los
@@ -104,6 +114,36 @@ def get_firewall_backend(
         "El backend 'iptables' se implementa en el bloque B. "
         "Usa FIREWALL_BACKEND=fake mientras tanto."
     )
+
+
+def get_firewall_backend(
+    request: Request,
+    settings: Annotated[Settings, Depends(get_settings_dep)],
+) -> FirewallBackend:
+    """El backend de ESTA aplicacion, uno solo y compartido entre peticiones.
+
+    Que sea uno solo importa por el fake, que guarda las cadenas en memoria:
+    construir uno nuevo por peticion hacia que `POST /firewall/apply` aplicara
+    sobre un objeto y `GET /firewall/status` leyera otro, recien nacido y vacio.
+    El sintoma habria sido un dashboard que dice "sin aplicar" justo despues de
+    aplicar, y la causa no esta a la vista en ninguno de los dos endpoints.
+
+    Vive en `app.state` y no en una variable de modulo a proposito: el ambito
+    correcto es la aplicacion, no el proceso. Cada `create_app()` de los tests
+    arranca con su firewall limpio sin tener que acordarse de vaciar nada, que
+    es la clase de fixture que se olvida y contamina la suite entera.
+
+    El backend real es apatrida —el estado esta en el kernel—, asi que compartirlo
+    no cambia nada para el; el `lifespan` construye el mismo objeto por el mismo
+    camino, y aqui queda la construccion perezosa para quien monte la aplicacion
+    sin ciclo de vida (un `TestClient` sin `with`).
+    """
+    backend: FirewallBackend | None = getattr(request.app.state, "firewall", None)
+    if backend is None:
+        backend = build_firewall_backend(settings)
+        backend.ensure_scaffold()
+        request.app.state.firewall = backend
+    return backend
 
 
 DbSession = Annotated[Session, Depends(get_db)]

@@ -6,12 +6,15 @@ Estado tras A3: `fake_firewall`, con las cadenas gestionadas ya creadas.
 
 Estado tras A4: `crear_usuario`, `admin_user`, `operator_user`, `viewer_user`,
 `headers_de` y `auth_headers` (el admin, que es el caso comun).
+
+Estado tras A5: `crear_regla`, que da de alta reglas por la API.
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from fastapi import FastAPI
@@ -238,3 +241,30 @@ def headers_de(settings: Settings) -> Callable[[User], dict[str, str]]:
 def auth_headers(admin_user: User, headers_de: Callable[[User], dict[str, str]]) -> dict[str, str]:
     """El caso comun: cabeceras de un administrador."""
     return headers_de(admin_user)
+
+
+# --------------------------------------------------------------------------- #
+# Reglas (A5)
+# --------------------------------------------------------------------------- #
+
+#: Lo minimo que acepta `POST /rules`. Todo lo demas se pasa como `extra`.
+REGLA_MINIMA: dict[str, object] = {"name": "regla de prueba", "chain": "INPUT", "action": "DROP"}
+
+
+@pytest.fixture
+def crear_regla(client: TestClient, auth_headers: dict[str, str]) -> Callable[..., dict[str, Any]]:
+    """Da de alta una regla POR LA API y devuelve el cuerpo de la respuesta.
+
+    Por la API y no insertando la fila a mano: asi las reglas de los tests pasan
+    por la misma normalizacion y las mismas posiciones que las de verdad. Una
+    fixture que inserte `Rule(...)` directamente acaba creando estados que la
+    aplicacion no puede producir, y entonces los tests dejan de decir nada.
+    """
+
+    def _crear(**extra: Any) -> dict[str, Any]:
+        respuesta = client.post("/api/v1/rules", json=REGLA_MINIMA | extra, headers=auth_headers)
+        assert respuesta.status_code == 201, respuesta.text
+        cuerpo: dict[str, Any] = respuesta.json()
+        return cuerpo
+
+    return _crear

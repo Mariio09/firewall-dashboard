@@ -56,6 +56,13 @@ siempre, incluso justo después de aplicar. Se comparan `RuleSpec`, que se const
 normalizadas. Lo descubrió una expedición de reconocimiento a la VM **antes** de escribir
 el parser, y las salidas literales que capturó son hoy las fixtures de los tests.
 
+**Escribir la política y aplicarla son dos pasos con dos contratos** ([ADR-0011](docs/adr/0011-escribir-la-politica-y-aplicarla-son-dos-pasos.md)).
+Si crear una regla funciona pero iptables falla, `POST /rules` devuelve 201 con
+`sync_state: failed` y el error saneado, no un 502: la regla existe, porque la fuente de
+verdad es la base de datos. `POST /firewall/apply` sí devuelve 502, porque ahí lo único que
+se ha pedido es aplicar. La consecuencia es que el estado de sincronización deja de ser
+decorativo y se convierte en el contrato de error de la API.
+
 **Lo que el sistema dice y no se entiende, no se descarta** ([ADR-0007](docs/adr/0007-nativerule-lleva-la-spec-parseada.md)).
 Una regla dentro de una cadena gestionada que el modelo no sabe expresar es exactamente el
 drift que hay que detectar, así que el parser la devuelve marcada en vez de ignorarla.

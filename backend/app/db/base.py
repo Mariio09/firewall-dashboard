@@ -24,10 +24,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from enum import StrEnum
 
-from sqlalchemy import DateTime, Enum, MetaData
+from sqlalchemy import DateTime, Dialect, Enum, MetaData
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.types import TypeDecorator
 
-__all__ = ["ADDRESS_LEN", "Base", "TimestampMixin", "str_enum", "utcnow"]
+__all__ = ["ADDRESS_LEN", "Base", "TimestampMixin", "UtcDateTime", "str_enum", "utcnow"]
 
 #: Longitud de una direccion IP en texto. 45 caracteres cubren el peor caso de
 #: IPv6 con prefijo (`ffff:...:ffff/128`), asi que la columna sirve igual cuando
@@ -60,6 +61,64 @@ def utcnow() -> datetime:
     horas en verano.
     """
     return datetime.now(UTC)
+
+
+class UtcDateTime(TypeDecorator[datetime]):
+    """`DateTime` que garantiza que lo que entra y lo que sale es UTC con tzinfo.
+
+    Existe porque SQLite **no guarda la zona horaria**. Aunque la columna se
+    declare `DateTime(timezone=True)` y se escriba un datetime con `tzinfo=UTC`,
+    lo que vuelve de la base de datos es un datetime ingenuo. Pydantic lo
+    serializa tal cual —`"2026-09-01T22:08:13"`, sin `Z` ni offset— y el
+    navegador lo interpreta como hora LOCAL: en Madrid, dos horas de desfase
+    silencioso en cada grafica y en cada tabla (descubierto en A4, ver
+    docs/ARCHITECTURE.md §5.1).
+
+    El arreglo se pone aqui, en el tipo de columna, y no en un `field_serializer`
+    de cada schema: asi vale para todos los modelos de una vez y, sobre todo,
+    vale para los que aun no existen. Un parche por schema hay que acordarse de
+    repetirlo, y el dia que se olvide el sintoma vuelve a ser una grafica
+    desplazada, que es de los bugs que mas tardan en verse.
+
+    Al escribir se **rechaza** un datetime ingenuo en vez de suponerle UTC.
+    Suponer es lo que produjo el problema: un naive puede venir de
+    `datetime.now()` (hora local del servidor) o de un ISO sin offset, y no hay
+    forma de distinguirlos. Que falle aqui convierte un desfase invisible en un
+    error inmediato y localizable. La entrada del usuario no llega nunca a este
+    punto sin zona: los schemas la normalizan antes, para que un cliente
+    despistado reciba un 422 y no un 500.
+    """
+
+    impl = DateTime
+    #: Sin dependencias de instancia: SQLAlchemy puede cachear el SQL compilado.
+    cache_ok = True
+
+    def __init__(self) -> None:
+        super().__init__(timezone=True)
+
+    def process_bind_param(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        """Normaliza a UTC antes de guardar."""
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError(
+                "Se ha intentado guardar un datetime sin zona horaria. Todos los "
+                "datetime de la base de datos son UTC con tzinfo: usa "
+                "`app.db.base.utcnow()` o convierte con `.astimezone(UTC)`."
+            )
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value: datetime | None, dialect: Dialect) -> datetime | None:
+        """Repone el `tzinfo` que SQLite perdio al guardar.
+
+        En un motor que si guarda la zona (PostgreSQL) el valor ya viene con
+        `tzinfo` y esto solo se asegura de que sea UTC, no otra zona.
+        """
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=UTC)
+        return value.astimezone(UTC)
 
 
 def str_enum(enum_class: type[StrEnum], *, name: str) -> Enum:
@@ -104,9 +163,7 @@ class TimestampMixin:
     es el origen de la mitad de los errores de fechas.
     """
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, nullable=False
-    )
+    created_at: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, nullable=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+        UtcDateTime, default=utcnow, onupdate=utcnow, nullable=False
     )

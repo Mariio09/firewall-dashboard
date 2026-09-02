@@ -18,6 +18,7 @@ from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.middleware.base import RequestResponseEndpoint
 
+from app.api.deps import build_firewall_backend
 from app.api.errors import register_exception_handlers
 from app.api.v1.health import router as health_router
 from app.api.v1.router import api_router
@@ -50,7 +51,25 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
         # SQLite; se registra solo el motor.
         db_engine=settings.database_url.split("://", 1)[0],
     )
-    # TODO(C2): backend.ensure_scaffold() y reconciliacion desde la DB.
+    # El backend de firewall se construye UNA vez por aplicacion y vive en
+    # `app.state`: con el fake, las cadenas estan en memoria, y una instancia
+    # nueva por peticion significaria aplicar sobre un objeto y leer otro vacio.
+    # `api/deps.py` lo recoge de ahi.
+    try:
+        firewall = build_firewall_backend(settings)
+        firewall.ensure_scaffold()
+    except NotImplementedError as exc:
+        # Pasa mientras `IptablesBackend` sea el bloque B. La aplicacion arranca
+        # igual —`/health` y `/auth` no necesitan firewall— y quien pida
+        # `/firewall/*` recibira el error de verdad, en vez de dejar la maquina
+        # sin API por una funcionalidad que aun no existe.
+        logger.warning("firewall_no_disponible", backend=settings.firewall_backend, motivo=str(exc))
+    else:
+        application.state.firewall = firewall
+        logger.info("firewall_preparado", backend=settings.firewall_backend)
+
+    # TODO(C2): reconciliar la politica desde la base de datos al arrancar, para
+    # que un reinicio de la VM restaure las reglas sin intervencion.
     yield
     logger.info("aplicacion_detenida")
 

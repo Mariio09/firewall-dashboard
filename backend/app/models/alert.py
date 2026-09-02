@@ -8,10 +8,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import ADDRESS_LEN, Base, str_enum, utcnow
+from app.db.base import ADDRESS_LEN, Base, UtcDateTime, str_enum, utcnow
 
 __all__ = ["Alert", "AlertKind", "Severity"]
 
@@ -42,9 +42,7 @@ class Alert(Base):
     __tablename__ = "alerts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True, nullable=False
-    )
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, index=True, nullable=False)
 
     kind: Mapped[AlertKind] = mapped_column(str_enum(AlertKind, name="alert_kind"), nullable=False)
     severity: Mapped[Severity] = mapped_column(
@@ -60,7 +58,7 @@ class Alert(Base):
     #: Como en `packet_logs`, sin FK: la alerta sobrevive a la regla.
     related_rule_uuid: Mapped[str | None] = mapped_column(String(36), nullable=True)
 
-    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
     acknowledged_by_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )

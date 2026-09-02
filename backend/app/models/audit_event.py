@@ -10,10 +10,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from sqlalchemy import JSON, DateTime, ForeignKey, Index, Integer, String
+from sqlalchemy import JSON, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.db.base import ADDRESS_LEN, Base, str_enum, utcnow
+from app.db.base import ADDRESS_LEN, Base, UtcDateTime, str_enum, utcnow
 
 __all__ = ["AuditAction", "AuditEvent", "AuditResult"]
 
@@ -52,9 +52,7 @@ class AuditEvent(Base):
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    ts: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), default=utcnow, index=True, nullable=False
-    )
+    ts: Mapped[datetime] = mapped_column(UtcDateTime, default=utcnow, index=True, nullable=False)
 
     #: `SET NULL`: borrar a un usuario no puede borrar la prueba de lo que hizo.
     user_id: Mapped[int | None] = mapped_column(

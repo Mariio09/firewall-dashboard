@@ -9,10 +9,10 @@ from datetime import datetime
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Boolean, DateTime, Integer, String
+from sqlalchemy import Boolean, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import Base, TimestampMixin, str_enum
+from app.db.base import Base, TimestampMixin, UtcDateTime, str_enum
 
 if TYPE_CHECKING:
     from app.models.rule import Rule
@@ -57,7 +57,7 @@ class User(TimestampMixin, Base):
     #: y deja rastro en la auditoria.
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
-    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    last_login_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     rules: Mapped[list[Rule]] = relationship(back_populates="created_by", lazy="selectin")
 

@@ -18,7 +18,6 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
-    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -28,7 +27,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from app.db.base import ADDRESS_LEN, Base, TimestampMixin, str_enum
+from app.db.base import ADDRESS_LEN, Base, TimestampMixin, UtcDateTime, str_enum
 from app.firewall.spec import Action, Chain, IPVersion, Protocol, SyncState, Table
 
 if TYPE_CHECKING:
@@ -106,7 +105,7 @@ class Rule(TimestampMixin, Base):
     log_prefix: Mapped[str | None] = mapped_column(String(29), nullable=True)
 
     #: Bloqueos temporales. La fase 4 (auto-ban) lo usa para caducar reglas solas.
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    expires_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     # --- Reflejo en el sistema ---------------------------------------------- #
     sync_state: Mapped[SyncState] = mapped_column(
@@ -114,7 +113,7 @@ class Rule(TimestampMixin, Base):
     )
     #: stderr saneado del ultimo intento fallido. El crudo va al log, no aqui.
     last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
-    applied_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    applied_at: Mapped[datetime | None] = mapped_column(UtcDateTime, nullable=True)
 
     #: Contadores leidos de `iptables -L -v -n`. BigInteger porque una regla que
     #: lleva meses en una interfaz activa desborda un entero de 32 bits en bytes.

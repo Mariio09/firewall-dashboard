@@ -25,8 +25,11 @@ repos:
       - id: no-commit-to-branch
         args: ["--branch", "main"]
 
+  # Esta version tiene que ser LA MISMA que la de backend/pyproject.toml. Si se
+  # separan, `make lint` y `pre-commit` se reformatean el codigo el uno al otro
+  # en cada commit: paso en A5 con 0.8.4 aqui y 0.16.3 en el venv.
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.8.4
+    rev: v0.16.3
     hooks:
       - id: ruff
         args: [--fix]
