@@ -81,6 +81,8 @@ infra/**/*.local.*
 node_modules/
 frontend/dist/
 frontend/.vite/
+# `tsc -b` (que es lo que corre `npm run build`) deja su cache de incremental aqui.
+frontend/*.tsbuildinfo
 *.local
 npm-debug.log*
 yarn-error.log*
@@ -100,4 +102,7 @@ pnpm-debug.log*
 # --------------------------------------------------------------------------- #
 # Limpieza pendiente
 # --------------------------------------------------------------------------- #
+# `_to_delete/` se borro el 2026-09-02. La entrada se queda por si vuelve a hacer
+# falta un cajon temporal: el puente no puede borrar sin permiso explicito y
+# mover ahi lo que sobra es la alternativa.
 _to_delete/
