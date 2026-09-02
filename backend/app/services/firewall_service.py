@@ -318,11 +318,20 @@ def _drift_de_cadena(
         )
 
     reales = [nativa.spec for nativa in nativas if nativa.spec is not None]
-    #: Lineas que la aplicacion no sabe expresar y que no son guardianes: reglas
+    #: Lineas que la aplicacion no sabe expresar y que no son suyas: reglas
     #: ajenas, o mas expresivas que el modelo (`multiport`, `limit`, negaciones).
     #: Que aparezcan dentro de una cadena gestionada ES drift, y por eso el
     #: parser las conserva en vez de descartarlas en silencio.
-    ajenas = [nativa.raw for nativa in nativas if nativa.spec is None and not nativa.is_guardian]
+    #:
+    #: Se descartan dos clases de linea que tampoco salen de `rules` y que sin
+    #: embargo son nuestras: los guardianes, y la mitad `-j LOG` de una regla con
+    #: log activado, cuya spec vive en la linea siguiente. Olvidar la segunda
+    #: hacia que crear una regla con log encendiera el banner de drift.
+    ajenas = [
+        nativa.raw
+        for nativa in nativas
+        if nativa.spec is None and not nativa.is_guardian and not nativa.is_log_half
+    ]
 
     faltan, sobran = _diferencia(deseadas, reales)
 

@@ -303,7 +303,14 @@ def _emparejar_reglas_de_log(reglas: list[NativeRule]) -> list[NativeRule]:
     perfectamente aplicada, ademas de una linea sobrante que no reconoce.
 
     Las dos lineas se conservan: `raw` sigue enseñando lo que hay de verdad en la
-    cadena. Lo que cambia es que la segunda ya lleva la spec completa.
+    cadena. Lo que cambia es que la segunda ya lleva la spec completa, y que la
+    primera queda marcada con `is_log_half`.
+
+    Esa marca no es cosmetica. Sin ella, la mitad `-j LOG` llega a la deteccion
+    de drift con `spec = None` y sin etiqueta de guardian, que es exactamente el
+    perfil de una regla ajena: el banner acusaba de haber tocado el firewall por
+    fuera a quien solo habia creado una regla con el log activado. Encontrado en
+    el recorrido manual de A6.
     """
     resultado: list[NativeRule] = []
     for regla in reglas:
@@ -324,6 +331,8 @@ def _emparejar_reglas_de_log(reglas: list[NativeRule]) -> list[NativeRule]:
                 # sin emparejar y el drift la vera. Preferible a inventarse una spec.
                 resultado.append(regla)
                 continue
+            # La mitad LOG ya esta en `resultado`: se marca en su sitio.
+            resultado[-1] = replace(anterior, is_log_half=True)
             resultado.append(replace(regla, spec=spec))
             continue
         resultado.append(regla)

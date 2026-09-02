@@ -154,6 +154,30 @@ def test_la_pareja_log_mas_accion_vuelve_como_una_sola_spec() -> None:
     assert accion.spec is not None
     assert accion.spec.log_enabled is True
     assert accion.spec.log_prefix == "FWDASH DROP: "
+    # Y la mitad LOG queda marcada. Sin la marca llega a la deteccion de drift
+    # con el mismo perfil que una regla ajena -- sin spec y sin etiqueta de
+    # guardian -- y el banner acusa de tocar el firewall por fuera a quien solo
+    # activo el log.
+    assert log.is_log_half is True
+    assert accion.is_log_half is False
+
+
+def test_un_log_suelto_no_se_marca_como_mitad_de_pareja() -> None:
+    """Un `-j LOG` sin su accion detras SI es una linea sobrante.
+
+    La marca dice "esta linea la escribio el renderer y su spec esta en la
+    siguiente". Ponerla por el mero hecho de ser un LOG escondería una regla
+    ajena que alguien dejo suelta en una cadena gestionada.
+    """
+    salida = (
+        '-A FWDASH_INPUT -p tcp --dport 23 -m comment --comment "fwdash:ab12cd34:suelto"'
+        ' -j LOG --log-prefix "SUELTO: "'
+    )
+    (log,) = parse_save_format(salida, "FWDASH_INPUT")
+
+    assert log.target == "LOG"
+    assert log.spec is None
+    assert log.is_log_half is False
 
 
 # --------------------------------------------------------------------------- #

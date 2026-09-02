@@ -360,6 +360,27 @@ def test_una_regla_sin_aplicar_no_es_drift(
     assert _drift(cuerpo, "INPUT")["missing"] == []
 
 
+def test_una_regla_con_el_log_activado_no_es_drift(
+    client: TestClient,
+    auth_headers: dict[str, str],
+    crear_regla: Callable[..., dict[str, Any]],
+) -> None:
+    """El renderer emite DOS lineas por regla con log, y las dos son suyas.
+
+    Regresion de A6: la mitad `-j LOG` llegaba a la comparacion con `spec = None`
+    y sin etiqueta de guardian, que es el perfil exacto de una regla ajena. El
+    banner de drift acusaba de haber tocado el firewall por fuera a quien acababa
+    de crear una regla con el log encendido, y aplicar de nuevo no lo arreglaba:
+    el apply volvia a escribir la misma linea.
+    """
+    crear_regla(name="con log", log_enabled=True, log_prefix="TEST: ")
+
+    cuerpo = client.get(f"{FIREWALL}/status", headers=auth_headers).json()
+
+    assert cuerpo["has_drift"] is False
+    assert _drift(cuerpo, "INPUT")["unexpected"] == []
+
+
 def test_una_regla_borrada_a_mano_es_drift(
     client: TestClient,
     api_app: FastAPI,

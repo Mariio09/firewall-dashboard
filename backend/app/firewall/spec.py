@@ -237,11 +237,15 @@ class NativeRule:
     que la aplicacion sabe expresar.
 
     Cuando no cae, `spec` es `None` y `unsupported` dice por que. Eso pasa con
-    tres cosas distintas, y las tres importan:
+    cuatro cosas distintas, y las cuatro importan:
 
       - Los guardianes, que el renderer emite pero no salen de la DB
         (`is_guardian` los reconoce por su etiqueta).
       - Las reglas de cierre de cadena (`-j DROP`, `-j RETURN`).
+      - **La mitad `-j LOG` de una regla con log activado** (`is_log_half`). El
+        renderer emite dos lineas por regla; la spec completa vive en la
+        segunda. La primera se conserva para poder enseñar la cadena tal cual,
+        pero no es una linea sobrante.
       - Reglas ajenas o mas expresivas que el modelo (`multiport`, `limit`,
         negaciones). Que aparezcan en una cadena gestionada ES drift, y por eso
         se conservan en vez de descartarse en silencio.
@@ -261,6 +265,11 @@ class NativeRule:
     counters: Counters = field(default_factory=Counters)
     spec: RuleSpec | None = None
     unsupported: tuple[str, ...] = ()
+    #: Esta linea es el `-j LOG` de una pareja que el parser ya emparejo: su
+    #: contenido esta en la `spec` de la siguiente regla. Quien compare contra la
+    #: base de datos tiene que saltarsela, o la vera como una linea sobrante que
+    #: nadie pidio -- que es justo lo que el renderer acaba de escribir.
+    is_log_half: bool = False
 
     @property
     def is_guardian(self) -> bool:
