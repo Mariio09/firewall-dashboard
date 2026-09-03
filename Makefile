@@ -98,8 +98,12 @@ vm-create: ## Crea la VM firewall-lab
 		--cloud-init infra/cloud-init.yaml
 
 .PHONY: vm-provision
-vm-provision: ## B0: recrea la VM desde cloud-init, la monta y lo verifica todo
+vm-provision: ## B0: recrea la VM, le mete el codigo y lo verifica todo
 	bash infra/scripts/b0_verify.sh
+
+.PHONY: vm-smoke
+vm-smoke: ## Recorre el arnes de B0 con un multipass falso (no necesita VM)
+	bash infra/scripts/b0_smoke.sh
 
 # El codigo entra en la VM CLONADO, no montado: ver ADR-0013. Se manda por un
 # `git bundle` transferido, asi que no hacen falta credenciales del repo privado

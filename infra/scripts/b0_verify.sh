@@ -40,6 +40,13 @@ IMAGEN_POR_DEFECTO="${VM_IMAGE:-24.04}"
 SIN_PREGUNTAR=0
 [[ "${1:-}" == "--si" ]] && SIN_PREGUNTAR=1
 
+# Valores por defecto. `set -u` mata el script si una variable llega sin definir,
+# y eso ya paso una vez: una edicion se llevo por delante el bloque que define
+# EXISTIA y el arnes murio en el paso 1 sin haber comprobado nada.
+EXISTIA=0
+IMAGEN=""
+RELEASE_PREVIA=""
+
 declare -a RESULTADOS=()
 FALLOS=0
 
@@ -100,6 +107,26 @@ command -v multipass >/dev/null 2>&1 \
 ok "multipass $(multipass version | head -1 | awk '{print $2}')"
 ok "cloud-init.yaml presente"
 
+# --- Fotografia de la VM actual, ANTES de destruirla ------------------------ #
+# Sin esto, el relanzamiento usaria el alias por defecto de multipass, que cambia
+# con el tiempo: la VM nueva podria no ser la misma que la que genero las
+# fixtures del parser, y nadie se enteraria.
+IMAGEN="$IMAGEN_POR_DEFECTO"
+if multipass info "$VM" >/dev/null 2>&1; then
+    EXISTIA=1
+    RELEASE_PREVIA="$(multipass info "$VM" | awk -F': *' '/^Image:/ {print $2}')"
+    info "VM actual: ${RELEASE_PREVIA:-desconocida}"
+    NUM="$(printf '%s' "$RELEASE_PREVIA" | grep -oE '[0-9]{2}\.[0-9]{2}' | head -1)"
+    if [[ -n "$NUM" ]]; then
+        IMAGEN="$NUM"
+        ok "imagen a reutilizar: $IMAGEN (la misma que tiene la VM actual)"
+    else
+        aviso "no he sabido leer la imagen de la VM actual; uso $IMAGEN"
+    fi
+else
+    EXISTIA=0
+    info "no hay VM '$VM'; se creara con la imagen $IMAGEN"
+fi
 
 # --------------------------------------------------------------------------- #
 paso "1. Recrear la VM desde cloud-init"
