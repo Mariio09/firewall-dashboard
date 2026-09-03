@@ -10,11 +10,14 @@ from __future__ import annotations
 
 from typing import Any, cast
 
+import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
-from app.api.deps import get_firewall_backend
+from app.api.deps import build_firewall_backend, get_firewall_backend
 from app.core.config import Settings
+from app.core.exceptions import SecurityError
+from app.firewall.iptables import IptablesBackend
 from app.firewall.spec import Chain
 from app.main import create_app
 
@@ -83,3 +86,52 @@ def test_el_fake_se_configura_con_los_settings(settings: Settings) -> None:
 
     assert any("OTRAAPP_INPUT" in linea for linea in argv)
     assert any("--dport 8443" in linea for linea in argv)
+
+
+# --------------------------------------------------------------------------- #
+# El interruptor del ADR-0004, por el otro lado (B3)
+# --------------------------------------------------------------------------- #
+
+#: Ruta absoluta, con un nombre que SI esta en la allowlist, de algo que no
+#: existe. Sirve para llegar hasta el subproceso sin depender de que la maquina
+#: donde corre la suite tenga iptables — que es justo lo que no tiene el Mac.
+IPTABLES_INEXISTENTE = "/nonexistent/sbin/iptables"
+
+
+def _con_iptables(settings: Settings, **extra: object) -> Settings:
+    return settings.model_copy(
+        update={
+            "firewall_backend": "iptables",
+            "iptables_bin": IPTABLES_INEXISTENTE,
+            "use_sudo": False,
+            **extra,
+        }
+    )
+
+
+def test_con_backend_iptables_se_construye_el_real(settings: Settings) -> None:
+    """El bloque C es esta linea: cambiar una variable de entorno."""
+    assert isinstance(build_firewall_backend(_con_iptables(settings)), IptablesBackend)
+
+
+def test_un_iptables_bin_fuera_de_la_allowlist_no_llega_a_arrancar(settings: Settings) -> None:
+    """El fallo de configuracion sale al construir, no en la primera peticion.
+
+    Sin esta comprobacion la allowlist seria decoracion: el argv seguiria
+    diciendo `iptables` y se ejecutaria `curl`.
+    """
+    with pytest.raises(SecurityError):
+        build_firewall_backend(_con_iptables(settings, iptables_bin="/usr/bin/curl"))
+
+
+def test_la_aplicacion_arranca_aunque_el_firewall_no_responda(settings: Settings) -> None:
+    """Un dashboard de firewall que no arranca cuando el firewall falla no sirve.
+
+    Es el caso real de la VM sin `CAP_NET_ADMIN` (ADR-0003). `/health` responde,
+    `app.state.firewall` se queda sin poner, y la primera peticion a
+    `/firewall/*` reintenta la construccion y devuelve el error de verdad.
+    """
+    app = create_app(_con_iptables(settings))
+    with TestClient(app) as cliente:
+        assert cliente.get("/api/v1/health").status_code == 200
+    assert getattr(app.state, "firewall", None) is None

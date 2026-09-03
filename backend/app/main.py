@@ -5,8 +5,9 @@ porque permite construir una app limpia por test, con dependencias sobreescritas
 
     uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-TODO(C2): en el evento de arranque, llamar a `ensure_scaffold()` y reconciliar la
-politica desde la base de datos.
+El `lifespan` construye el backend de firewall y ejecuta `ensure_scaffold()`
+(B3). Lo que falta es reconciliar la politica guardada al arrancar, para que un
+reinicio de la VM restaure las reglas sin intervencion -> TODO(C2).
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from app.api.errors import register_exception_handlers
 from app.api.v1.health import router as health_router
 from app.api.v1.router import api_router
 from app.core.config import Settings, get_settings
+from app.core.exceptions import AppError
 from app.core.logging import (
     bind_request_context,
     clear_request_context,
@@ -58,12 +60,24 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     try:
         firewall = build_firewall_backend(settings)
         firewall.ensure_scaffold()
-    except NotImplementedError as exc:
-        # Pasa mientras `IptablesBackend` sea el bloque B. La aplicacion arranca
-        # igual —`/health` y `/auth` no necesitan firewall— y quien pida
-        # `/firewall/*` recibira el error de verdad, en vez de dejar la maquina
-        # sin API por una funcionalidad que aun no existe.
-        logger.warning("firewall_no_disponible", backend=settings.firewall_backend, motivo=str(exc))
+    except AppError as exc:
+        # Desde B3 esto ya no es "aun no implementado" sino el caso real: iptables
+        # que no esta, `IPTABLES_BIN` mal configurado, o el servicio sin
+        # CAP_NET_ADMIN (ADR-0003). La aplicacion arranca IGUAL, a proposito:
+        # `/health` y `/auth` no necesitan firewall, y un dashboard de firewall
+        # que se niega a arrancar justo cuando el firewall falla es un dashboard
+        # que no sirve para diagnosticar nada — ademas de un bucle de reinicios
+        # en systemd cuya unica traza esta en el journal.
+        #
+        # `app.state.firewall` se queda sin poner, asi que la primera peticion a
+        # `/firewall/*` lo reintenta (`deps.get_firewall_backend`) y devuelve el
+        # error de verdad al cliente, con su codigo y su status.
+        logger.warning(
+            "firewall_no_disponible",
+            backend=settings.firewall_backend,
+            codigo=exc.code,
+            motivo=str(exc),
+        )
     else:
         application.state.firewall = firewall
         logger.info("firewall_preparado", backend=settings.firewall_backend)

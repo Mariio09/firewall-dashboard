@@ -68,6 +68,10 @@ test-cov: ## Tests con informe de cobertura
 b2-verify: ## B2: arnes del runner de subprocess (se ejecuta en el Mac)
 	bash infra/scripts/b2_verify.sh
 
+.PHONY: b3-verify
+b3-verify: ## B3: arnes de IptablesBackend contra un iptables simulado (en el Mac)
+	bash infra/scripts/b3_verify.sh
+
 .PHONY: lint
 lint: ## ruff + mypy + bandit
 	cd $(BACKEND) && . .venv/bin/activate && ruff check . && ruff format --check . && mypy app && bandit -c pyproject.toml -r app

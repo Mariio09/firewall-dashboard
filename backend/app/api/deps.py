@@ -96,9 +96,16 @@ def build_firewall_backend(settings: Settings) -> FirewallBackend:
     preview tiene que enseñar el 8080. Un fake configurado distinto que el real
     es justo la clase de mentira contra la que avisa docs/ARCHITECTURE.md §8.
 
-    `IptablesBackend` necesita un `CommandRunner` real, que es el bloque B2. Se
-    construye ahi, no aqui, para no arrastrar `subprocess` a un import que
-    ocurre tambien en el Mac.
+    El import de `SubprocessRunner` es DIFERIDO a proposito. Es el unico modulo
+    del proyecto que importa `subprocess`, y con `FIREWALL_BACKEND=fake` no tiene
+    por que llegar siquiera a cargarse: el codigo que puede lanzar procesos no
+    entra en el proceso mientras nadie lo pida. Cuesta una linea y es defensa en
+    profundidad gratis.
+
+    Los fallos de configuracion salen AQUI y no en la primera peticion:
+    `SubprocessRunner` valida `iptables_bin` en su constructor (ruta absoluta y
+    dentro de la allowlist) y `IptablesBackend` rechaza cualquier tabla que no
+    sea `filter`.
     """
     if settings.firewall_backend == "fake":
         return FakeFirewallBackend(
@@ -107,12 +114,16 @@ def build_firewall_backend(settings: Settings) -> FirewallBackend:
             management_cidr=str(settings.management_allowed_cidr),
         )
 
-    # TODO(B2/B3): construir SubprocessRunner + IptablesBackend con los valores
-    # de `settings` (iptables_bin, use_sudo, timeout, prefijo de cadena y los
-    # parametros de las reglas guardian).
-    raise NotImplementedError(
-        "El backend 'iptables' se implementa en el bloque B. "
-        "Usa FIREWALL_BACKEND=fake mientras tanto."
+    from app.firewall.iptables import IptablesBackend
+    from app.firewall.runner import SubprocessRunner
+
+    return IptablesBackend(
+        SubprocessRunner(use_sudo=settings.use_sudo, iptables_bin=settings.iptables_bin),
+        chain_prefix=settings.managed_chain_prefix,
+        table=settings.iptables_table,
+        management_port=settings.management_port,
+        management_cidr=str(settings.management_allowed_cidr),
+        timeout=settings.command_timeout_seconds,
     )
 
 

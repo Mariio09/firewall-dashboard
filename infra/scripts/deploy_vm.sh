@@ -131,6 +131,9 @@ else
 # systemd lo lee como EnvironmentFile: sin comentarios en linea.
 APP_ENV=vm
 APP_NAME=firewall-dashboard
+# INFO no es cosmetico: 'firewall.command.start' se emite a INFO y es la UNICA
+# pista de auditoria de que comando se ejecuto contra iptables. Bajar esto a
+# WARNING apaga el registro entero. Decidido en B3.
 LOG_LEVEL=INFO
 LOG_FORMAT=json
 API_HOST=$VM_IP
@@ -144,9 +147,11 @@ ACCESS_TOKEN_EXPIRE_MINUTES=30
 REFRESH_TOKEN_EXPIRE_DAYS=7
 BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=$ADMIN_PASS
-# 'fake' hasta que B3 implemente IptablesBackend. B1 demuestra los PRIVILEGIOS,
-# no la escritura de reglas: con 'iptables' hoy, deps.build_firewall_backend()
-# lanza NotImplementedError y el servicio arrancaria sin firewall.
+# 'iptables' YA FUNCIONA desde B3, y aqui sigue en 'fake' a proposito: en cuanto
+# se cambie, el servicio escribira reglas reales por su cuenta al aplicar. Antes
+# de dar ese paso tiene que existir la red de seguridad de B4 (panic_reset.sh y
+# el RUNBOOK), o un error de configuracion deja la VM sin acceso y sin forma
+# documentada de recuperarlo. Cambiarlo es un acto consciente, no un descuido.
 FIREWALL_BACKEND=fake
 IPTABLES_BIN=/usr/sbin/iptables
 IPTABLES_TABLE=filter
