@@ -310,11 +310,29 @@ if [[ -f "$UNIDAD" ]]; then
     if [[ -f "$CONF_FILE" ]]; then
         HOST="$(awk -F= '/^API_HOST=/{print $2}' "$CONF_FILE")"
         PUERTO="$(awk -F= '/^API_PORT=/{print $2}' "$CONF_FILE")"
+        # Son dos endpoints distintos y contestan cosas distintas: `/health` es
+        # liveness y no toca nada; `/ready` sondea la DB y dice que backend de
+        # firewall hay montado. Comprobar el cuerpo equivocado da un ROJO FALSO,
+        # que es barato comparado con un verde falso pero igual de inutil.
         SALUD="$(curl -fsS --max-time 5 "http://$HOST:$PUERTO/health" 2>&1)"
-        if [[ "$SALUD" == *'"firewall_backend"'* ]]; then
-            ok "GET /health responde en $HOST:$PUERTO → ${SALUD:0:120}"
+        if [[ "$SALUD" == *'"status":"ok"'* ]]; then
+            ok "GET /health responde en $HOST:$PUERTO → $SALUD"
         else
             fallo "GET /health no responde en $HOST:$PUERTO" "${SALUD:0:200}"
+        fi
+
+        LISTO="$(curl -fsS --max-time 5 "http://$HOST:$PUERTO/ready" 2>&1)"
+        if [[ "$LISTO" == *'"status":"ready"'* && "$LISTO" == *'"database":"ok"'* ]]; then
+            ok "GET /ready: la aplicacion llega a su DB → ${LISTO:0:140}"
+        else
+            fallo "GET /ready no dice 'ready' con la DB en 'ok'" "${LISTO:0:200}"
+        fi
+
+        BACKEND_CONF="$(awk -F= '/^FIREWALL_BACKEND=/{print $2}' "$CONF_FILE")"
+        if [[ "$LISTO" == *"\"firewall_backend\":\"$BACKEND_CONF\""* ]]; then
+            ok "el backend en marcha es el del .env ($BACKEND_CONF; sera 'iptables' en B3)"
+        else
+            fallo "el backend en marcha no coincide con FIREWALL_BACKEND=$BACKEND_CONF" "${LISTO:0:200}"
         fi
 
         if [[ "$HOST" == "127.0.0.1" || "$HOST" == "localhost" ]]; then
