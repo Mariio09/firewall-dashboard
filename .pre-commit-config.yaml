@@ -12,10 +12,15 @@ repos:
       # `iptables -L -v -n` rellena las columnas con espacios al final de cada
       # linea, y limpiarlos convertiria el test en una comprobacion contra un
       # formato que iptables no produce.
+      #
+      # El patron cubre los DOS juegos de fixtures (`iptables_output/` y
+      # `iptables_output_1810/`). Con la ruta exacta del primero, las fixtures
+      # de la 1.8.10 entraban al formateador en su primer commit y se les
+      # borraban los espacios finales: el dato, corrompido por un hook de estilo.
       - id: trailing-whitespace
-        exclude: ^backend/tests/fixtures/iptables_output/.*\.txt$
+        exclude: ^backend/tests/fixtures/iptables_output[^/]*/.*\.txt$
       - id: end-of-file-fixer
-        exclude: ^backend/tests/fixtures/iptables_output/.*\.txt$
+        exclude: ^backend/tests/fixtures/iptables_output[^/]*/.*\.txt$
       - id: check-yaml
       - id: check-toml
       - id: check-added-large-files
@@ -46,8 +51,21 @@ repos:
         files: ^backend/app/
         additional_dependencies: [pydantic>=2.9, types-python-dateutil]
 
+  # Misma regla que ruff, y por el mismo motivo: esta version tiene que coincidir
+  # con la de backend/pyproject.toml. Con `>=1.8` en pyproject y 1.8.0 aqui, el
+  # venv acabo en 1.9.4 y `make lint` empezo a fallar en codigo que nadie habia
+  # tocado desde A4. Un linter sin pinear cambia de opinion solo.
+  #
+  # PERO el pin va en `rev` y SOLO en `rev`. bandit es un hook `language: python`
+  # cuyo repo ES el paquete: pre-commit hace `pip install . bandit[toml]`, y ese
+  # `.` es el clon del tag, que sin metadatos de git se declara version 0.0.0.
+  # Añadir `bandit[toml]==1.9.4` le pide a pip un bandit DISTINTO del que esta
+  # instalando desde el codigo, y la resolucion es imposible:
+  #   ERROR: Cannot install bandit 0.0.0 (from ...) and bandit==1.9.4
+  # El extra `[toml]` sin version es lo correcto: solo añade el lector de TOML
+  # que hace falta para `-c backend/pyproject.toml`.
   - repo: https://github.com/PyCQA/bandit
-    rev: 1.8.0
+    rev: 1.9.4
     hooks:
       - id: bandit
         args: ["-c", "backend/pyproject.toml"]

@@ -28,7 +28,11 @@ class LoginRequest(BaseModel):
     password: str = Field(min_length=1, max_length=1024)
 
     model_config = ConfigDict(
-        json_schema_extra={"example": {"username": "admin", "password": "***"}}
+        # `***` es el marcador del ejemplo que sale en /docs, no una credencial:
+        # bandit marca cualquier literal junto a una clave llamada "password", y
+        # aqui es justo lo contrario de un secreto filtrado. El `nosec` va EN la
+        # linea marcada; puesto encima no silencia nada.
+        json_schema_extra={"example": {"username": "admin", "password": "***"}}  # nosec B105
     )
 
 

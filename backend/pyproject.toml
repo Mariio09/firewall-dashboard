@@ -34,7 +34,8 @@ dev = [
     # versiones, y tiene que coincidir con la del hook de .pre-commit-config.yaml.
     "ruff==0.16.3",
     "mypy>=1.13",
-    "bandit[toml]>=1.8",
+    # Pineado exacto, igual que ruff: tiene que coincidir con .pre-commit-config.yaml
+    "bandit[toml]==1.9.4",
     "pip-audit>=2.7",
     "pre-commit>=4.0",
 ]
