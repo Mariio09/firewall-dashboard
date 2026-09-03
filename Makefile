@@ -64,6 +64,10 @@ test: ## Tests que no necesitan iptables (los que corren en el Mac)
 test-cov: ## Tests con informe de cobertura
 	cd $(BACKEND) && . .venv/bin/activate && pytest --cov=app --cov-report=term-missing --cov-report=html
 
+.PHONY: b2-verify
+b2-verify: ## B2: arnes del runner de subprocess (se ejecuta en el Mac)
+	bash infra/scripts/b2_verify.sh
+
 .PHONY: lint
 lint: ## ruff + mypy + bandit
 	cd $(BACKEND) && . .venv/bin/activate && ruff check . && ruff format --check . && mypy app && bandit -c pyproject.toml -r app

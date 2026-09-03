@@ -57,6 +57,24 @@ Es exactamente el escenario donde nace la inyección de comandos.
 **Además:** `shell=True` está prohibido en todo el repositorio, y hay un test que
 lo verifica leyendo los archivos.
 
+**La allowlist cubre también la configuración.** El nombre lógico (`iptables`) lo
+pone el renderer, pero la ruta real sale de `IPTABLES_BIN`: un `.env` que apuntara
+a otro ejecutable dejaría la allowlist en decoración. El constructor de
+`SubprocessRunner` exige ruta absoluta y que el nombre del archivo esté en
+`ALLOWED_BINARIES`, y el resto de binarios se resuelven como hermanos suyos en el
+mismo directorio, nunca por PATH.
+
+**Entorno mínimo y timeout.** El proceso hijo recibe solo `PATH` y `LC_ALL=C`: no
+hereda nada del padre, así que no hay secuestro por variable de entorno ni salida
+dependiente del locale. Todo comando lleva timeout, porque un `iptables` esperando
+el lock de xtables bloquearía el worker indefinidamente.
+
+**Cómo se verifica.** Los tests del runner no usan un mock de `subprocess.run`:
+apuntan a un `iptables` falso que registra su argv y su entorno, así que
+`shell=False` y el entorno mínimo se comprueban mirando lo que el hijo vio de
+verdad. Un `--comment "; touch PWNED"` llega literal y no crea el archivo.
+`make b2-verify` repite esa prueba fuera de pytest.
+
 ---
 
 ## 4. Privilegios: la parte incómoda
