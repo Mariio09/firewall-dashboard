@@ -60,6 +60,17 @@ _REJECT_POR_DEFECTO = "icmp-port-unreachable"
 #: Direcciones que significan "cualquiera" y que por tanto no son un selector.
 _CUALQUIER_DIRECCION = frozenset({"0.0.0.0/0", "::/0"})
 
+#: La columna `prot` de `iptables -L` no imprime siempre lo mismo. iptables 1.8.10
+#: la saca en NUMERO de protocolo (`6`, `17`, `1`, `0`) donde 1.8.9 y 1.8.11 sacan
+#: el nombre (`tcp`, `udp`, `icmp`, `all`). Es una regresion de la 1.8.10, no una
+#: evolucion del formato -- pero la arrastra Ubuntu 24.04 LTS, que es la imagen
+#: por defecto de la VM, asi que el parser tiene que entender las dos formas.
+#:
+#: Solo afecta al formato tabular: `iptables -S` imprime igual en las dos
+#: versiones, y por eso `parse_save_format` no necesita nada de esto. Numeros
+#: segun /etc/protocols.
+_PROTOCOLO_POR_NUMERO = {"0": "all", "1": "icmp", "6": "tcp", "17": "udp"}
+
 _CABECERA_CADENA_RE = re.compile(r"^Chain (\S+) \(")
 _PREFIJO_LOG_RE = re.compile(r'prefix "(.*?)"')
 _COMENTARIO_TABULAR_RE = re.compile(r"/\* (.*?) \*/")
@@ -385,7 +396,9 @@ def _leer_regla_tabular(linea: str, chain: str) -> NativeRule:
     campos: dict[str, str] = {}
     no_soportado: list[str] = []
 
-    if protocolo not in ("all", "0"):
+    # Normalizar ANTES de decidir: con 1.8.10, "6" es tcp y "0" es "cualquiera".
+    protocolo = _PROTOCOLO_POR_NUMERO.get(protocolo, protocolo)
+    if protocolo != "all":
         campos["protocol"] = protocolo
     if entrada != "*":
         campos["in_interface"] = entrada

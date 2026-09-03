@@ -257,16 +257,27 @@ else
 fi
 
 # --- iptables: la version tiene que seguir siendo la de las fixtures -------- #
+# Lo que importa no es que coincida con UNA fixture, sino que el parser este
+# probado contra la version que esta maquina tiene. Hay mas de un juego a
+# proposito: `iptables -L` cambia de formato entre versiones (ver el README de
+# tests/fixtures/iptables_output_1810/).
 VERSION_VM="$(envm sudo iptables --version | head -1)"
-VERSION_FIXTURE="$(head -1 "$FIXTURE_VERSION" 2>/dev/null)"
-info "en la VM:  ${VERSION_VM:-?}"
-info "fixture A2: ${VERSION_FIXTURE:-?}"
-if [[ -n "$VERSION_VM" && "$VERSION_VM" == "$VERSION_FIXTURE" ]]; then
-    ok "iptables coincide con la fixture de A2"
+info "en la VM: ${VERSION_VM:-?}"
+JUEGOS="$(dirname "$FIXTURE_VERSION")"/../iptables_output*
+CUBIERTA=""
+for JUEGO in $JUEGOS; do
+    [[ -f "$JUEGO/version.txt" ]] || continue
+    V="$(head -1 "$JUEGO/version.txt")"
+    info "  fixtures $(basename "$JUEGO"): $V"
+    [[ "$V" == "$VERSION_VM" ]] && CUBIERTA="$(basename "$JUEGO")"
+done
+if [[ -n "$CUBIERTA" ]]; then
+    ok "hay fixtures de esta version de iptables ($CUBIERTA): el parser esta probado contra ella"
 else
-    aviso "la version de iptables NO coincide con la fixture de A2."
-    aviso "El parser se escribio contra la salida de '$VERSION_FIXTURE'."
-    aviso "Antes de B3, recaptura fixtures ('make recon') y pasa test_parser.py."
+    aviso "NINGUN juego de fixtures corresponde a '$VERSION_VM'."
+    aviso "El parser podria no entender su salida, y ningun test lo detectaria:"
+    aviso "test_parser.py lee los archivos del repo, nunca esta VM."
+    aviso "Captura y compara sin machacar nada:  make recon-diff"
 fi
 if [[ "$VERSION_VM" == *"nf_tables"* ]]; then
     ok "el binario es iptables-nft, como asume el parser"

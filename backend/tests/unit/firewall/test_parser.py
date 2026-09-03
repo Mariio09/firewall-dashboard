@@ -26,9 +26,17 @@ from app.firewall.spec import Action, Chain, Protocol
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "iptables_output"
 
+#: Segundo juego, capturado en B0 de una VM con iptables 1.8.10. Se añadio en vez
+#: de sustituir al de A2 (1.8.11) porque el parser tiene que aguantar las dos.
+FIXTURES_1810 = Path(__file__).resolve().parents[2] / "fixtures" / "iptables_output_1810"
+
 
 def leer(nombre: str) -> str:
     return (FIXTURES / nombre).read_text(encoding="utf-8")
+
+
+def leer_1810(nombre: str) -> str:
+    return (FIXTURES_1810 / nombre).read_text(encoding="utf-8")
 
 
 # --------------------------------------------------------------------------- #
@@ -291,3 +299,58 @@ def test_parse_human_number(entrada: str, esperado: int) -> None:
 def test_parse_human_number_rechaza(valor: str) -> None:
     with pytest.raises(FirewallError):
         parse_human_number(valor)
+
+
+# --------------------------------------------------------------------------- #
+# Dos versiones de iptables, una sola lectura
+# --------------------------------------------------------------------------- #
+# La columna `prot` de `iptables -L` no imprime lo mismo en todas las versiones:
+# 1.8.10 saca el NUMERO de protocolo (6, 17, 1, 0) donde 1.8.11 saca el nombre
+# (tcp, udp, icmp, all). Es una regresion de la 1.8.10 --- pero la trae Ubuntu
+# 24.04 LTS, la imagen por defecto de la VM, asi que no basta con evitarla.
+#
+# `iptables -S` es identico en las dos, y por eso `parse_save_format` no aparece
+# aqui: el formato de guardado no tiene este problema.
+
+
+def test_las_dos_versiones_de_iptables_dan_las_mismas_reglas() -> None:
+    """El requisito no es "1.8.10 se lee", es "se lee IGUAL".
+
+    Comparar las specs y no los `NativeRule` enteros es deliberado: son dos
+    capturas distintas, asi que los contadores y el `raw` difieren por fuerza.
+    Lo que no puede diferir es lo que el parser entiende.
+    """
+    for cadena in ("INPUT", "FORWARD", "FWDASH_INPUT", "FWDASH_OUTPUT", "FWDASH_FORWARD"):
+        v1811 = parse_list_format(leer("cargado/list_verbose_exact.txt"), cadena)
+        v1810 = parse_list_format(leer_1810("cargado/list_verbose_exact.txt"), cadena)
+        assert [r.spec for r in v1811] == [r.spec for r in v1810], cadena
+        assert [r.unsupported for r in v1811] == [r.unsupported for r in v1810], cadena
+
+
+def test_el_protocolo_numerico_se_traduce() -> None:
+    """La prueba directa, sobre la unica regla de la captura que lleva etiqueta.
+
+    Sin la traduccion esto no es una lectura incorrecta: es un `ValueError`
+    ('6' is not a valid Protocol) que sube sin capturar y se lleva por delante la
+    lectura de la cadena entera.
+    """
+    reglas = parse_list_format(leer_1810("cargado/list_verbose_exact.txt"), "FWDASH_INPUT")
+
+    (api,) = [r for r in reglas if r.rule_uuid == "1"]
+    assert api.spec is not None
+    assert api.spec.protocol == Protocol.TCP  # en la captura, `prot` es 6
+    assert api.spec.dst_port == "8000"
+
+    protocolos = {r.spec.protocol for r in reglas if r.spec is not None}
+    assert Protocol.UDP in protocolos  # 17
+    assert Protocol.ALL in protocolos  # 0, que ademas no es un selector
+
+
+def test_las_fixtures_declaran_versiones_distintas() -> None:
+    """Si alguien regenera un juego encima del otro, este test lo canta.
+
+    Sin el, los dos juegos podrian acabar siendo la misma version sin que nadie
+    se entere, y el test de arriba pasaria comparando una captura consigo misma.
+    """
+    assert "1.8.11" in leer("version.txt")
+    assert "1.8.10" in leer_1810("version.txt")
