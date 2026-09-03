@@ -130,81 +130,121 @@ tocarla hasta el bloque B.
 
 ## 4. Bloque B — Preparar la VM para ejecutar el backend
 
-### 4.1 Dependencias
+Tres pasos: desplegar, dar privilegios y comprobar que los privilegios son los
+que crees. El segundo lo aplicas **a mano y revisado**; ninguna herramienta de
+este repo toca `/etc/sudoers.d/` ni `/etc/systemd/system/` por su cuenta.
 
-Lo hace el script de arranque, que además crea el usuario de servicio `fwdash`
-y el directorio de datos:
+### 4.1 Desplegar
 
 ```bash
-multipass shell firewall-lab
-sudo bash /home/ubuntu/app/infra/scripts/bootstrap_vm.sh
+make vm-sync          # desde el Mac: lleva a la VM lo COMMITEADO
+make vm-deploy        # dentro de la VM: despliega, instala y migra
 ```
 
-> `bootstrap_vm.sh` **no** instala los privilegios de iptables a propósito: eso
-> es el §4.2, y se aplica a mano después de leer el ADR-0003.
+`make vm-deploy` lanza `infra/scripts/deploy_vm.sh`, que es idempotente y hace:
 
-Dentro de la VM sí se usa `python3 -m venv`: el `uv` del ADR-0005 es una
-decisión del **Mac**, donde `ensurepip` está roto. En Ubuntu el venv funciona.
+| Qué | Dónde | Detalle |
+|---|---|---|
+| Usuario de servicio | `fwdash` | de sistema, sin login, sin home, con la cuenta bloqueada |
+| Código | `/opt/firewall-dashboard` | copia de `git archive HEAD`, root:root, solo lectura para el servicio ([ADR-0014](adr/0014-el-despliegue-vive-en-opt.md)) |
+| Entorno virtual | `/opt/firewall-dashboard/backend/.venv` | de root; el servicio lo ejecuta, no lo escribe |
+| Configuración | `/etc/firewall-dashboard/backend.env` | `0640 root:fwdash`, con `JWT_SECRET_KEY` generada. **Fuera del repo** |
+| Datos | `/var/lib/firewall-dashboard` | de `fwdash`, `0750` |
+| DB | `firewall.db` | `alembic upgrade head` y administrador inicial, ejecutados **como `fwdash`** |
 
-### 4.2 Usuario de servicio y privilegios
+> **El clon sigue en `/home/ubuntu/app`** y es tu área de trabajo. Lo que ejecuta
+> el servicio es la copia de `/opt`, y solo llega ahí lo que esté en un commit.
+> `/opt/firewall-dashboard/.desplegado` dice qué commit es.
 
-Elige **una** de las dos opciones. El razonamiento completo está en
-`docs/adr/0003-privilegios-sudo-vs-capabilities.md`.
+> **Anota la contraseña del admin.** Se genera al crear el `.env` y se imprime
+> **una sola vez**. Si la pierdes: borra `/etc/firewall-dashboard/backend.env`,
+> vuelve a lanzar el despliegue y se genera otra (los tokens en circulación dejan
+> de valer, porque también cambia el `JWT_SECRET_KEY`).
 
-**Opción A — sudoers** (rápida para desarrollo):
+Dentro de la VM sí se usa `python3 -m venv`: el `uv` del [ADR-0005](adr/0005-uv-como-gestor-de-paquetes.md)
+es una decisión del **Mac**, donde `ensurepip` está roto. En Ubuntu el venv funciona.
+
+### 4.2 Privilegios: elige **una** de las dos
+
+El razonamiento completo está en
+[`adr/0003-privilegios-sudo-vs-capabilities.md`](adr/0003-privilegios-sudo-vs-capabilities.md).
+
+> ⚠️ **No se combinan.** La unidad de systemd lleva `NoNewPrivileges=yes`, y
+> `sudo` es setuid: bajo el servicio, `sudo` devuelve `EPERM` aunque el archivo
+> de sudoers esté instalado y sea válido. Son alternativas, no capas.
+
+**Opción B — capabilities (recomendada, y la que deja el servicio corriendo):**
 
 ```bash
-sudo useradd -r -s /usr/sbin/nologin fwdash
-sudo cp infra/sudoers.d/firewall-dashboard /etc/sudoers.d/firewall-dashboard
-sudo chmod 0440 /etc/sudoers.d/firewall-dashboard
-sudo visudo -c -f /etc/sudoers.d/firewall-dashboard   # validar SIEMPRE antes de confiar
-```
-
-> Una línea mal escrita en `/etc/sudoers.d/` puede dejarte sin `sudo`. `visudo -c`
-> no es opcional. Y ten una segunda terminal abierta con sesión de root mientras
-> lo tocas.
-
-**Opción B — capabilities** (recomendada):
-
-```bash
-sudo useradd -r -s /usr/sbin/nologin fwdash
-sudo mkdir -p /var/lib/firewall-dashboard && sudo chown fwdash /var/lib/firewall-dashboard
-sudo cp infra/systemd/firewall-dashboard.service /etc/systemd/system/
+sudo cp /opt/firewall-dashboard/infra/systemd/firewall-dashboard.service \
+        /etc/systemd/system/
 sudo systemctl daemon-reload
 sudo systemctl enable --now firewall-dashboard
 ```
 
-### 4.3 Configuración
+Con esta opción, `/etc/firewall-dashboard/backend.env` lleva `USE_SUDO=false`.
+
+**Opción A — sudoers (solo para lanzar el backend a mano como `fwdash`):**
 
 ```bash
-cd /home/ubuntu/app/backend
-cp .env.example .env
+sudo cp /opt/firewall-dashboard/infra/sudoers.d/firewall-dashboard \
+        /etc/sudoers.d/firewall-dashboard
+sudo chmod 0440 /etc/sudoers.d/firewall-dashboard
+sudo visudo -c -f /etc/sudoers.d/firewall-dashboard
 ```
 
-Y edita:
+> Una línea mal escrita en `/etc/sudoers.d/` puede dejarte sin `sudo`. `visudo -c`
+> no es opcional. Ten una segunda terminal abierta con sesión de root mientras lo
+> tocas — y recuerda que `multipass shell` no pasa por TCP: esa puerta sigue
+> abierta pase lo que pase.
 
-```ini
-APP_ENV=vm
-FIREWALL_BACKEND=iptables            # ← el bloque C, en una línea
-API_HOST=192.168.64.X                # la IP de `make vm-ip`
-DATABASE_URL=sqlite:////var/lib/firewall-dashboard/firewall.db
-JWT_SECRET_KEY=<openssl rand -hex 32>
-LOG_FORMAT=json
-MANAGEMENT_ALLOWED_CIDR=192.168.64.0/24
-```
-
-### 4.4 Migraciones y arranque
+### 4.3 Comprobar que los privilegios son los que crees
 
 ```bash
-alembic upgrade head
-uvicorn app.main:app --host 192.168.64.X --port 8000
+make vm-b1            # o, dentro de la VM:
+                      # sudo bash /opt/firewall-dashboard/infra/scripts/b1_verify.sh
+```
+
+No modifica nada. Comprueba **efectos**, no códigos de salida, y cada afirmación
+positiva viene con su contraprueba:
+
+- que `fwdash` **no** puede leer la política sin privilegios (si pudiera, todo lo
+  demás no probaría nada);
+- que con sudoers sí puede, y que un binario **fuera** del `Cmnd_Alias` es rechazado;
+- que con `CAP_NET_ADMIN` ambiental sí puede, y que con **solo** el
+  `CapabilityBoundingSet` **no** — que es lo que demuestra cuál de los dos trabaja;
+- que un `subprocess.run(['iptables','-S'])` lanzado desde Python **hereda** la
+  capability, que es exactamente como la usará el runner del paso B2;
+- que el servicio corre como `fwdash` y no como root, con `cap_net_admin` en su
+  conjunto efectivo (leído de `/proc/<pid>/status`), y que `/health` responde.
+
+Si algo falla, el journal:
+
+```bash
+make vm-service-log
+```
+
+### 4.4 Iterar
+
+Cada cambio de código llega a la VM así:
+
+```bash
+git commit ...        # solo viaja lo commiteado (ADR-0013)
+make vm-sync
+make vm-deploy
+sudo systemctl restart firewall-dashboard    # dentro de la VM
 ```
 
 Desde el Mac:
 
 ```bash
-curl http://192.168.64.X:8000/health
+curl http://$(make -s vm-ip):8000/health
 ```
+
+> **`FIREWALL_BACKEND=fake` de momento.** B1 demuestra los *privilegios*, no la
+> escritura de reglas: `IptablesBackend` se implementa en B3. Poner `iptables` hoy
+> haría que `build_firewall_backend()` lanzara `NotImplementedError` y la
+> aplicación arrancaría sin firewall. El interruptor se gira en B3.
 
 ---
 

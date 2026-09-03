@@ -102,6 +102,16 @@ ReadWritePaths=/var/lib/firewall-dashboard
 nada más. `NoNewPrivileges=yes` impide escalar. `ProtectSystem=strict` deja el
 sistema de archivos en solo lectura salvo el directorio de datos.
 
+
+> ⚠️ **Este fragmento es del diseño, no la unidad real.** Al aplicarlo en B1 se vio
+> que no arrancaba: `ProtectHome=yes` oculta `/home`, donde estaban el `ExecStart`
+> y el `.env`. El despliegue se movió a `/opt` ([ADR-0014](adr/0014-el-despliegue-vive-en-opt.md))
+> y `ReadWritePaths` pasó a `StateDirectory`. Además, **A y B no se combinan**:
+> `NoNewPrivileges=yes` anula el setuid de `sudo`, así que con el servicio va
+> `USE_SUDO=false`. La unidad que se instala de verdad es
+> `infra/systemd/firewall-dashboard.service`; el porqué, en la corrección del
+> [ADR-0003](adr/0003-privilegios-sudo-vs-capabilities.md).
+
 **El proyecto soporta ambas** (`USE_SUDO` en `.env`) y documenta A como atajo de
 desarrollo y B como el modo correcto. El razonamiento completo está en
 `docs/adr/0003-privilegios-sudo-vs-capabilities.md`.

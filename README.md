@@ -147,8 +147,10 @@ make front-check  # backend + gen:api + typecheck + lint + build, todo de una
 Ver [`docs/SETUP_VM.md`](docs/SETUP_VM.md). Resumen:
 
 ```bash
-make vm-create      # crear firewall-lab
-make vm-mount       # montar el repo dentro
+make vm-provision   # recrear firewall-lab desde cero y verificarla (B0)
+make vm-sync        # llevar dentro lo commiteado (ADR-0013)
+make vm-deploy      # desplegar en /opt de la VM: venv, .env, DB (B1)
+make vm-b1          # comprobar los privilegios del servicio (B1)
 make recon          # capturar fixtures de iptables (SOLO LECTURA)
 ```
 

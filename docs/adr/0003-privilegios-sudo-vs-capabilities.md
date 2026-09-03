@@ -85,3 +85,40 @@ es incómodo.
 **Qué invalidaría esta decisión:** desplegar en un entorno sin systemd
 (un contenedor, por ejemplo), donde habría que usar el modelo de capabilities del
 runtime correspondiente.
+
+---
+
+## Corrección de B1 (2026-09-03)
+
+Al aplicar esta decisión aparecieron tres cosas que el ADR daba por hechas y no
+lo eran. La decisión se mantiene; el fragmento de unidad de la opción B, no.
+
+**1. La unidad del ejemplo no arrancaba.** Apuntaba a `/home/ubuntu/app` y a la
+vez llevaba `ProtectHome=yes`, que oculta `/home` dentro del namespace del
+servicio: el `ExecStart` no existe para el proceso (`203/EXEC`). Y aunque no lo
+llevara, en Ubuntu 24.04 el home es `0750` y `fwdash` no puede ni atravesarlo.
+El despliegue se movió a `/opt` → [ADR-0014](0014-el-despliegue-vive-en-opt.md).
+La unidad real, con la corrección, es `infra/systemd/firewall-dashboard.service`.
+
+**2. A y B no se apilan: son alternativas.** `NoNewPrivileges=yes` impide que un
+binario setuid escale, y `sudo` es setuid. Bajo el servicio, `sudo` devuelve
+`EPERM` aunque `/etc/sudoers.d/firewall-dashboard` esté instalado y sea válido.
+De ahí que el entorno de la VM lleve `USE_SUDO=false`: no es una preferencia, es
+la única opción coherente con la unidad. `USE_SUDO=true` sirve para lanzar el
+backend **a mano** como `fwdash`, fuera de systemd, que es exactamente el
+inconveniente que este ADR anotaba en sus consecuencias — la opción A lo resuelve.
+
+**3. Lo que importa es `AmbientCapabilities`, no el bounding set.** El backend no
+ejecuta `iptables`: lanza un **subproceso** que lo ejecuta. Las capabilities
+ambientales sobreviven al `execve` y llegan al hijo; el bounding set solo marca el
+techo de lo que se puede tener. Con `CapabilityBoundingSet` a solas, el proceso
+arranca con el conjunto efectivo vacío y `iptables` responde *Permission denied*.
+`infra/scripts/b1_verify.sh` lo demuestra en los dos sentidos: comprueba que un
+`subprocess.run(['iptables','-S'])` lanzado desde Python funciona con las ambient,
+y **falla** con solo el bounding set. Sin esa contraprueba, la comprobación
+positiva no distinguiría entre "las capabilities funcionan" y "`iptables` era
+permisivo".
+
+También cambió un detalle menor: `ReadWritePaths=/var/lib/firewall-dashboard` se
+sustituyó por `StateDirectory=firewall-dashboard`, que además crea el directorio
+con el propietario correcto en cada arranque.

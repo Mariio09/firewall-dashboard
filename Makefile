@@ -19,7 +19,7 @@ PYTHON ?= python3
 
 .PHONY: help
 help: ## Muestra esta ayuda
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
+	@grep -E '^[a-zA-Z0-9_-]+:.*?## .*$$' $(MAKEFILE_LIST) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # --------------------------------------------------------------------------- #
@@ -114,8 +114,8 @@ vm-smoke: ## Recorre el arnes de B0 con un multipass falso (no necesita VM)
 vm-clone: ## Clona el repo dentro de la VM desde un bundle (primera vez)
 	git --no-optional-locks bundle create $(BUNDLE) --all
 	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
-	-multipass exec $(VM) -- rm -rf /home/ubuntu/app
-	multipass exec $(VM) -- git clone --branch $(RAMA) $(BUNDLE) /home/ubuntu/app
+	-multipass exec $(VM) -- rm -rf /home/ubuntu/app </dev/null
+	multipass exec $(VM) -- git clone --branch $(RAMA) $(BUNDLE) /home/ubuntu/app </dev/null
 	@rm -f $(BUNDLE)
 	@echo "Clonado en $(VM):/home/ubuntu/app (rama $(RAMA))"
 
@@ -123,10 +123,31 @@ vm-clone: ## Clona el repo dentro de la VM desde un bundle (primera vez)
 vm-sync: ## Lleva a la VM lo commiteado de la rama actual
 	git --no-optional-locks bundle create $(BUNDLE) --all
 	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
-	multipass exec $(VM) -- git -C /home/ubuntu/app fetch $(BUNDLE) $(RAMA)
-	multipass exec $(VM) -- git -C /home/ubuntu/app reset --hard FETCH_HEAD
+	multipass exec $(VM) -- git -C /home/ubuntu/app fetch $(BUNDLE) $(RAMA) </dev/null
+	multipass exec $(VM) -- git -C /home/ubuntu/app reset --hard FETCH_HEAD </dev/null
 	@rm -f $(BUNDLE)
 	@echo "VM sincronizada con $(RAMA). Lo NO commiteado no ha viajado."
+
+# --------------------------------------------------------------------------- #
+# Bloque B1 — privilegios
+#
+# El despliegue y el arnes NO instalan sudoers ni la unidad de systemd: eso se
+# aplica a mano y revisado (ADR-0003, docs/SETUP_VM.md §4.2).
+# `</dev/null` en cada `multipass exec` no es adorno: exec reenvia stdin, y sin
+# redirigirlo el comando remoto se queda esperando entrada que no llega.
+# --------------------------------------------------------------------------- #
+
+.PHONY: vm-deploy
+vm-deploy: ## B1: despliega en /opt de la VM lo commiteado, con venv, .env y DB
+	multipass exec $(VM) -- sudo bash /home/ubuntu/app/infra/scripts/deploy_vm.sh </dev/null
+
+.PHONY: vm-b1
+vm-b1: ## B1: arnes de privilegios dentro de la VM (no modifica nada)
+	multipass exec $(VM) -- sudo bash /opt/firewall-dashboard/infra/scripts/b1_verify.sh </dev/null
+
+.PHONY: vm-service-log
+vm-service-log: ## Ultimas lineas del journal del servicio en la VM
+	multipass exec $(VM) -- sudo journalctl -u firewall-dashboard -n 50 --no-pager </dev/null
 
 .PHONY: vm-mount
 vm-mount: ## (alternativa) Monta el repo en la VM. Necesita que multipassd pueda leer la carpeta

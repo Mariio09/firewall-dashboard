@@ -116,10 +116,12 @@ firewall-dashboard/
 │
 ├── infra/
 │   ├── cloud-init.yaml             # provisión de la VM (sin secretos)
-│   ├── sudoers.d/firewall-dashboard # plantilla, ver §4.3
-│   ├── systemd/firewall-dashboard.service
+│   ├── sudoers.d/firewall-dashboard # plantilla, opcion A del ADR-0003
+│   ├── systemd/firewall-dashboard.service  # opcion B, la recomendada
 │   └── scripts/
-│       ├── bootstrap_vm.sh
+│       ├── deploy_vm.sh            # B1: despliega en /opt (ADR-0014)
+│       ├── b0_verify.sh            # B0: recrea la VM y comprueba efectos
+│       ├── b1_verify.sh            # B1: privilegios, con contrapruebas
 │       └── panic_reset.sh          # limpia FWDASH_* y devuelve INPUT a ACCEPT
 │
 ├── backend/
@@ -637,6 +639,16 @@ ProtectHome=yes
 PrivateTmp=yes
 ReadWritePaths=/var/lib/firewall-dashboard
 ```
+
+
+> ⚠️ **Este fragmento es del diseño, no la unidad real.** Al aplicarlo en B1 se vio
+> que no arrancaba: `ProtectHome=yes` oculta `/home`, donde estaban el `ExecStart`
+> y el `.env`. El despliegue se movió a `/opt` ([ADR-0014](adr/0014-el-despliegue-vive-en-opt.md))
+> y `ReadWritePaths` pasó a `StateDirectory`. Además, **A y B no se combinan**:
+> `NoNewPrivileges=yes` anula el setuid de `sudo`, así que con el servicio va
+> `USE_SUDO=false`. La unidad que se instala de verdad es
+> `infra/systemd/firewall-dashboard.service`; el porqué, en la corrección del
+> [ADR-0003](adr/0003-privilegios-sudo-vs-capabilities.md).
 
 `CAP_NET_ADMIN` es exactamente el permiso que `iptables` necesita, sin conceder nada
 más, y `NoNewPrivileges` impide escalar. Poder explicar en una entrevista *por qué

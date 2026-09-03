@@ -90,16 +90,31 @@ mucho más de lo que este modelo de datos representa.
 ## Emergencia 4 — La aplicación no arranca
 
 ```bash
+# ¿Qué dice el servicio?
+systemctl status firewall-dashboard --no-pager
+journalctl -u firewall-dashboard -n 50 --no-pager
+
 # ¿Falta una variable obligatoria?
-cd /home/ubuntu/app/backend && python -c "from app.core.config import get_settings; print(get_settings())"
+cd /opt/firewall-dashboard/backend
+set -a; . /etc/firewall-dashboard/backend.env; set +a
+.venv/bin/python -c "from app.core.config import get_settings; print(get_settings())"
 
 # ¿Migraciones pendientes?
-alembic current && alembic upgrade head
+runuser -u fwdash -- .venv/bin/alembic current
 
-# ¿Permisos de iptables?
-sudo -u fwdash /usr/sbin/iptables -S      # opción A (sudoers)
-systemctl status firewall-dashboard        # opción B (capabilities)
+# ¿Los privilegios están donde crees? El arnés lo dice entero:
+sudo bash /opt/firewall-dashboard/infra/scripts/b1_verify.sh
 ```
+
+**Errores de arranque que ya han pasado, y qué significan:**
+
+| Síntoma | Causa |
+|---|---|
+| `status=203/EXEC` | el `ExecStart` no existe *dentro del namespace*. Casi siempre, una ruta bajo `/home` con `ProtectHome=yes` (ADR-0014), o el bit de ejecución perdido en el venv |
+| `status=200/CHDIR` | el `WorkingDirectory` no es alcanzable para `fwdash` |
+| `Permission denied` al escribir la DB | `firewall.db` es de root: se migró como root en vez de como `fwdash` |
+| `sudo: a password is required` | `USE_SUDO=true` con la unidad instalada. `NoNewPrivileges=yes` anula el setuid de `sudo`: pon `USE_SUDO=false` (ADR-0003) |
+| el valor de una variable trae un comentario pegado | comentario al final de una línea en `/etc/firewall-dashboard/backend.env`: systemd se queda con la línea entera |
 
 Si falla por falta de `JWT_SECRET_KEY`, es intencionado: la aplicación se niega a
 arrancar sin secreto en lugar de generar uno al vuelo y darte una falsa sensación
@@ -144,8 +159,8 @@ red.
 Si todo está tan roto que no merece la pena diagnosticar:
 
 ```bash
-multipass delete firewall-lab && multipass purge
-make vm-create && make vm-mount
+make vm-provision                 # destruye, recrea y verifica la VM entera
+make vm-clone && make vm-deploy    # el codigo dentro, y desplegado en /opt
 ```
 
 Son dos minutos. Es una VM de laboratorio: destruirla y recrearla es una

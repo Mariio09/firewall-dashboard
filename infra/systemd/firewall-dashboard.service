@@ -1,18 +1,45 @@
 # =========================================================================== #
-# firewall-dashboard — unidad systemd (OPCIÓN B del ADR-0003, recomendada)
+# firewall-dashboard — unidad systemd (OPCION B del ADR-0003, recomendada)
 #
-# Instalación:
-#   sudo cp infra/systemd/firewall-dashboard.service /etc/systemd/system/
+# Instalacion (paso B1, ver docs/SETUP_VM.md §4.2):
+#   sudo bash /home/ubuntu/app/infra/scripts/deploy_vm.sh
+#   sudo cp /opt/firewall-dashboard/infra/systemd/firewall-dashboard.service \
+#           /etc/systemd/system/
 #   sudo systemctl daemon-reload
 #   sudo systemctl enable --now firewall-dashboard
 #
 # Comprobar el endurecimiento:
 #   systemd-analyze security firewall-dashboard
+#
+# --------------------------------------------------------------------------- #
+# POR QUE NADA DE ESTO VIVE EN /home/ubuntu  (ADR-0014)
+#
+# La version anterior de esta unidad apuntaba a /home/ubuntu/app y NO PODIA
+# ARRANCAR, por dos motivos independientes:
+#
+#   1. En Ubuntu 24.04 el home del usuario es 0750. `fwdash` es un usuario de
+#      sistema sin grupo comun con `ubuntu`: no puede ni atravesar el directorio,
+#      asi que el venv, el codigo y el .env eran ilegibles para el servicio.
+#   2. `ProtectHome=yes` oculta /home DENTRO del namespace del servicio. Aunque
+#      los permisos fuesen correctos, el ExecStart no existiria para el proceso
+#      (status=203/EXEC). `ProtectHome=yes` y `ReadOnlyPaths=/home/ubuntu/app`
+#      en la misma unidad se contradicen.
+#
+# El clon de git sigue en /home/ubuntu/app: es el area de trabajo de `ubuntu`.
+# Lo que ejecuta el servicio es el DESPLIEGUE en /opt, que hace deploy_vm.sh.
+#
+# --------------------------------------------------------------------------- #
+# INCOMPATIBLE CON LA OPCION A (sudoers)
+#
+# `NoNewPrivileges=yes` impide que un binario setuid escale, y `sudo` ES setuid:
+# bajo esta unidad, `sudo` devuelve EPERM. Por eso el entorno de la VM lleva
+# USE_SUDO=false. Las dos opciones del ADR-0003 son alternativas, no capas.
 # =========================================================================== #
 
 [Unit]
 Description=firewall-dashboard — gestion de reglas de iptables
-Documentation=file:/home/ubuntu/app/docs/ARCHITECTURE.md
+Documentation=file:/opt/firewall-dashboard/docs/ARCHITECTURE.md
+Documentation=file:/opt/firewall-dashboard/docs/RUNBOOK.md
 After=network-online.target
 Wants=network-online.target
 
@@ -20,9 +47,9 @@ Wants=network-online.target
 Type=simple
 User=fwdash
 Group=fwdash
-WorkingDirectory=/home/ubuntu/app/backend
-EnvironmentFile=/home/ubuntu/app/backend/.env
-ExecStart=/home/ubuntu/app/backend/.venv/bin/uvicorn app.main:app --host ${API_HOST} --port ${API_PORT}
+WorkingDirectory=/opt/firewall-dashboard/backend
+EnvironmentFile=/etc/firewall-dashboard/backend.env
+ExecStart=/opt/firewall-dashboard/backend/.venv/bin/uvicorn app.main:app --host ${API_HOST} --port ${API_PORT}
 Restart=on-failure
 RestartSec=5
 
@@ -31,6 +58,12 @@ RestartSec=5
 #
 # CAP_NET_ADMIN es EXACTAMENTE lo que iptables necesita. Nada mas.
 # El proceso nunca es root y NoNewPrivileges impide que llegue a serlo.
+#
+# `AmbientCapabilities` (y no solo `CapabilityBoundingSet`) es lo que hace que
+# el `iptables` que lanza el runner como SUBPROCESO herede la capability: las
+# ambient sobreviven al execve. Con solo el bounding set, el hijo arrancaria con
+# el conjunto efectivo vacio y daria "Permission denied". Es la comprobacion
+# central de infra/scripts/b1_verify.sh.
 # --------------------------------------------------------------------------- #
 AmbientCapabilities=CAP_NET_ADMIN CAP_NET_RAW
 CapabilityBoundingSet=CAP_NET_ADMIN CAP_NET_RAW
@@ -38,20 +71,29 @@ NoNewPrivileges=yes
 
 # --------------------------------------------------------------------------- #
 # Aislamiento del sistema de archivos
+#
+# StateDirectory crea /var/lib/firewall-dashboard con el propietario correcto en
+# cada arranque e implica permiso de escritura: un paso manual menos que olvidar.
 # --------------------------------------------------------------------------- #
+StateDirectory=firewall-dashboard
+StateDirectoryMode=0750
 ProtectSystem=strict
 ProtectHome=yes
 PrivateTmp=yes
-ReadWritePaths=/var/lib/firewall-dashboard
-ReadOnlyPaths=/home/ubuntu/app
+PrivateDevices=yes
+ProtectProc=invisible
+ReadOnlyPaths=/opt/firewall-dashboard
+UMask=0027
 
 # --------------------------------------------------------------------------- #
 # Aislamiento del kernel
 # --------------------------------------------------------------------------- #
 ProtectKernelTunables=yes
 ProtectKernelModules=yes
+ProtectKernelLogs=yes
 ProtectControlGroups=yes
 ProtectClock=yes
+ProtectHostname=yes
 RestrictRealtime=yes
 RestrictSUIDSGID=yes
 LockPersonality=yes

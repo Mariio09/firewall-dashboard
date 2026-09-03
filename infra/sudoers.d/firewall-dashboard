@@ -3,8 +3,9 @@
 #
 #   PLANTILLA. NO se instala automáticamente. Revísala antes de copiarla.
 #
-# Instalación:
-#   sudo cp infra/sudoers.d/firewall-dashboard /etc/sudoers.d/firewall-dashboard
+# Instalación (dentro de la VM, tras `deploy_vm.sh`):
+#   sudo cp /opt/firewall-dashboard/infra/sudoers.d/firewall-dashboard \
+#           /etc/sudoers.d/firewall-dashboard
 #   sudo chmod 0440 /etc/sudoers.d/firewall-dashboard
 #   sudo visudo -c -f /etc/sudoers.d/firewall-dashboard
 #
@@ -26,6 +27,17 @@
 # infra/systemd/firewall-dashboard.service y docs/adr/0003-*.md.
 #
 # Usa este archivo solo para desarrollo dentro de la VM de laboratorio.
+#
+# --------------------------------------------------------------------------- #
+# NO SE COMBINA CON LA UNIDAD DE SYSTEMD  (comprobado en B1)
+#
+# La unidad lleva `NoNewPrivileges=yes`, que impide que un binario setuid
+# escale. `sudo` ES setuid: bajo el servicio devuelve EPERM, con o sin este
+# archivo instalado. Las dos opciones del ADR-0003 son ALTERNATIVAS, no capas.
+#
+# Este archivo sirve para lanzar el backend A MANO como `fwdash` (con
+# USE_SUDO=true en el entorno). Con el servicio, USE_SUDO=false.
+# `infra/scripts/b1_verify.sh` comprueba las dos cosas.
 # =========================================================================== #
 
 # Rutas ABSOLUTAS a propósito: un alias con ruta relativa permitiría sustituir el
