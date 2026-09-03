@@ -17,6 +17,9 @@ packages:
   - python3-venv
   - python3-pip
   - iptables
+  # git NO viene en la imagen cloud de Ubuntu. Hace falta porque el codigo
+  # entra en la VM clonado, no montado (ADR-0013).
+  - git
   - curl
   - jq
   - net-tools

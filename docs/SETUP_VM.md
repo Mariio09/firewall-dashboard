@@ -64,17 +64,36 @@ multipass info firewall-lab
 make vm-ip          # anota esta IP: va en el .env y en el frontend
 ```
 
-## 2. Montar el repositorio dentro de la VM
+## 2. Llevar el repositorio dentro de la VM
+
+```bash
+make vm-clone     # primera vez
+make vm-sync      # cada vez que quieras llevar cambios
+```
+
+El código entra **clonado**, no montado: ver
+`docs/adr/0013-el-codigo-entra-en-la-vm-clonado.md`. Se manda con un `git bundle`
+transferido por `multipass transfer`, así que **no hacen falta credenciales del
+repo privado dentro de la VM**, ni red en la VM, ni permisos especiales sobre la
+carpeta del Mac.
+
+> ⚠️ **Solo viaja lo commiteado.** Editar un archivo en el Mac ya no basta:
+> commitea y lanza `make vm-sync`. `b0_verify.sh` compara el `HEAD` de los dos
+> lados y avisa si el árbol del Mac está sucio, precisamente para que no depures
+> código que no es el que corre.
+
+### La alternativa: montar
 
 ```bash
 make vm-mount
 ```
 
-Editas en el Mac con tu editor de siempre y el proceso corre en la VM sobre los
-mismos archivos. Sin `rsync`, sin redespliegues, sin dos copias del código
-divergiendo.
+Solo funciona si `multipassd` puede leer la carpeta del repo. **En macOS,
+`~/Downloads`, `~/Documents` y `~/Desktop` están protegidas por TCC**: el mount
+devuelve 0 y el directorio sale vacío dentro de la VM. Para usarlo, ten el repo
+fuera de esas carpetas o concede Acceso total al disco a `multipassd`.
 
-> Si el `mount` falla en Apple Silicon, activa el soporte:
+> Si el `mount` falla en Apple Silicon, activa además el soporte:
 > `multipass set local.privileged-mounts=true`
 
 ---

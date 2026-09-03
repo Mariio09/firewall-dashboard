@@ -8,6 +8,9 @@ VM       := firewall-lab
 # alias por defecto, que cambia con el tiempo, y las fixtures del parser (A2)
 # se capturaron contra una version concreta de iptables.
 VM_IMAGE ?= 24.04
+# Rama que se lleva a la VM. Por defecto, la que tengas activa.
+RAMA     ?= $(shell git --no-optional-locks rev-parse --abbrev-ref HEAD)
+BUNDLE   := /tmp/fwdash.bundle
 
 # El proyecto usa StrEnum, que existe a partir de 3.11. En macOS el `python3` del
 # sistema suele ser 3.9: si es tu caso, instala 3.12 (`brew install python@3.12`)
@@ -98,8 +101,31 @@ vm-create: ## Crea la VM firewall-lab
 vm-provision: ## B0: recrea la VM desde cloud-init, la monta y lo verifica todo
 	bash infra/scripts/b0_verify.sh
 
+# El codigo entra en la VM CLONADO, no montado: ver ADR-0013. Se manda por un
+# `git bundle` transferido, asi que no hacen falta credenciales del repo privado
+# dentro de la VM, ni red, ni permisos de TCC sobre la carpeta del Mac.
+# Solo viaja lo COMMITEADO.
+
+.PHONY: vm-clone
+vm-clone: ## Clona el repo dentro de la VM desde un bundle (primera vez)
+	git --no-optional-locks bundle create $(BUNDLE) --all
+	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
+	-multipass exec $(VM) -- rm -rf /home/ubuntu/app
+	multipass exec $(VM) -- git clone --branch $(RAMA) $(BUNDLE) /home/ubuntu/app
+	@rm -f $(BUNDLE)
+	@echo "Clonado en $(VM):/home/ubuntu/app (rama $(RAMA))"
+
+.PHONY: vm-sync
+vm-sync: ## Lleva a la VM lo commiteado de la rama actual
+	git --no-optional-locks bundle create $(BUNDLE) --all
+	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
+	multipass exec $(VM) -- git -C /home/ubuntu/app fetch $(BUNDLE) $(RAMA)
+	multipass exec $(VM) -- git -C /home/ubuntu/app reset --hard FETCH_HEAD
+	@rm -f $(BUNDLE)
+	@echo "VM sincronizada con $(RAMA). Lo NO commiteado no ha viajado."
+
 .PHONY: vm-mount
-vm-mount: ## Monta este repositorio dentro de la VM
+vm-mount: ## (alternativa) Monta el repo en la VM. Necesita que multipassd pueda leer la carpeta
 	multipass mount $(PWD) $(VM):/home/ubuntu/app
 
 .PHONY: vm-shell

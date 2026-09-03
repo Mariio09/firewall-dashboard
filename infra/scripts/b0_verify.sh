@@ -49,8 +49,45 @@ fallo() { printf '   \033[31mFALLO\033[0m %s\n' "$*"; RESULTADOS+=("FALLO $*"); 
 aviso() { printf '   \033[33mAVISO\033[0m %s\n' "$*"; RESULTADOS+=("AVISO $*"); }
 info()  { printf '         %s\n' "$*"; }
 
+# Limite de segundos para cada comando dentro de la VM. macOS no trae `timeout`
+# (es de coreutils de GNU), asi que se vigila a mano: el comando va al fondo y
+# un centinela lo mata si se pasa del limite.
+#
+# Sin esto el arnes se CUELGA en vez de fallar, que es la peor forma de fallar:
+# ni verde ni rojo, congelado y sin decir donde. Paso de verdad la primera vez
+# que se ejecuto B0, leyendo un archivo por el montaje recien hecho: `test -f`
+# pasa (solo mira metadatos) y el `sha256sum` de la linea siguiente se queda
+# esperando al sshfs que sirve multipassd.
+LIMITE_VM="${LIMITE_VM:-20}"
+
 # Ejecuta un comando dentro de la VM y devuelve su salida limpia.
-envm() { multipass exec "$VM" -- "$@" 2>/dev/null; }
+# Devuelve != 0 si el comando falla O si se pasa de LIMITE_VM segundos.
+envm() {
+    local tmp pid vigia rc
+    # Forma portable: `mktemp -t nombre` vale en BSD (macOS) pero GNU exige X's.
+    tmp="$(mktemp "${TMPDIR:-/tmp}/b0exec.XXXXXX")"
+    multipass exec "$VM" -- "$@" >"$tmp" 2>/dev/null &
+    pid=$!
+    # El centinela mira cada decima si el comando sigue vivo, para poder salir en
+    # cuanto termine. Con un `sleep $LIMITE_VM` de una pieza no se puede: bash no
+    # atiende la senal hasta que el sleep acaba, asi que CADA llamada costaria el
+    # limite entero (20s x 15 llamadas = 5 minutos de espera pura).
+    (
+        i=0
+        while [[ $i -lt $((LIMITE_VM * 10)) ]]; do
+            kill -0 "$pid" 2>/dev/null || exit 0
+            sleep 0.1
+            i=$((i + 1))
+        done
+        kill -KILL "$pid" 2>/dev/null
+    ) &
+    vigia=$!
+    wait "$pid" 2>/dev/null; rc=$?
+    wait "$vigia" 2>/dev/null
+    cat "$tmp"
+    rm -f "$tmp"
+    return $rc
+}
 
 # --------------------------------------------------------------------------- #
 paso "0. Comprobaciones previas"
@@ -63,34 +100,6 @@ command -v multipass >/dev/null 2>&1 \
 ok "multipass $(multipass version | head -1 | awk '{print $2}')"
 ok "cloud-init.yaml presente"
 
-# --- Fotografia de la VM actual, ANTES de destruirla ------------------------ #
-# Sin esto, el relanzamiento usaria el alias por defecto de multipass, que
-# cambia con el tiempo: la VM de B0 podria no ser la misma que la de A2 y las
-# fixtures del parser dejarian de corresponder con la maquina.
-IMAGEN="$IMAGEN_POR_DEFECTO"
-VERSION_PREVIA=""
-if multipass info "$VM" >/dev/null 2>&1; then
-    RELEASE_PREVIA="$(multipass info "$VM" | awk -F': *' '/^Image:/ {print $2}')"
-    info "VM actual: $RELEASE_PREVIA"
-    # "Ubuntu 24.04 LTS" -> "24.04"
-    NUM="$(printf '%s' "$RELEASE_PREVIA" | grep -oE '[0-9]{2}\.[0-9]{2}' | head -1)"
-    if [[ -n "$NUM" ]]; then
-        IMAGEN="$NUM"
-        ok "imagen a reutilizar: $IMAGEN (la misma que tenia la VM de A2)"
-    else
-        aviso "no he sabido leer la imagen de la VM actual; uso $IMAGEN"
-    fi
-    if multipass info "$VM" | grep -q 'State:.*Running'; then
-        VERSION_PREVIA="$(envm sudo iptables --version | head -1)"
-        [[ -n "$VERSION_PREVIA" ]] && info "iptables actual: $VERSION_PREVIA"
-    else
-        info "la VM esta parada; no leo su iptables (no hace falta arrancarla para borrarla)"
-    fi
-    EXISTIA=1
-else
-    info "no hay VM '$VM'; se creara con la imagen $IMAGEN"
-    EXISTIA=0
-fi
 
 # --------------------------------------------------------------------------- #
 paso "1. Recrear la VM desde cloud-init"
@@ -213,55 +222,80 @@ else
 fi
 
 # --------------------------------------------------------------------------- #
-paso "3. Montar el repo y comprobar que el montaje esta VIVO"
+paso "3. Llevar el codigo a la VM y comprobar que es EL MISMO"
 
-if ! multipass mount "$RAIZ" "$VM:$DESTINO"; then
-    aviso "el mount fallo. En Apple Silicon suele ser el soporte privilegiado:"
-    aviso "  multipass set local.privileged-mounts=true"
-    fallo "multipass mount devolvio error"
+# El codigo entra CLONADO, no montado (ADR-0013). `multipass mount` devuelve 0 y
+# deja el directorio vacio cuando multipassd no puede leer la carpeta de origen
+# —el caso de ~/Downloads, protegida por TCC—, y eso no se arregla desde aqui.
+# El bundle no necesita credenciales del repo privado, ni red en la VM, ni
+# permisos sobre la carpeta del Mac.
+
+if envm bash -c "command -v git >/dev/null"; then
+    ok "git presente en la VM (viene del cloud-init)"
 else
-    ok "multipass mount ejecutado ($RAIZ -> $VM:$DESTINO)"
+    fallo "no hay git en la VM: sin el, el codigo no puede entrar"
 fi
 
-# `mount` puede devolver 0 y dejar el directorio vacio. Lo que prueba que el
-# montaje existe es ver el arbol; lo que prueba que es EL MISMO arbol y no una
-# copia vieja es que los checksums coincidan y que la escritura pase de un lado
-# al otro en los dos sentidos.
-if envm test -f "$DESTINO/Makefile"; then
-    ok "el codigo del Mac se ve dentro de la VM ($DESTINO/Makefile)"
-else
-    fallo "no veo $DESTINO/Makefile dentro de la VM: el montaje no esta"
+RAMA="$(git -C "$RAIZ" --no-optional-locks rev-parse --abbrev-ref HEAD 2>/dev/null)"
+HEAD_MAC="$(git -C "$RAIZ" --no-optional-locks rev-parse HEAD 2>/dev/null)"
+BUNDLE="${TMPDIR:-/tmp}/fwdash-b0.bundle"
+
+# Lo que NO viaja es tan importante como lo que viaja, y es la diferencia real
+# frente al montaje: con un mount, editar el archivo bastaba.
+if [[ -n "$(git -C "$RAIZ" --no-optional-locks status --porcelain 2>/dev/null)" ]]; then
+    aviso "el arbol del Mac tiene cambios SIN COMMITEAR: no van a llegar a la VM."
+    aviso "Con el clonado solo viaja lo commiteado. Commitea y 'make vm-sync'."
 fi
 
-SUMA_MAC="$(shasum -a 256 "$RAIZ/Makefile" | awk '{print $1}')"
-SUMA_VM="$(envm sha256sum "$DESTINO/Makefile" | awk '{print $1}')"
-if [[ -n "$SUMA_VM" && "$SUMA_MAC" == "$SUMA_VM" ]]; then
-    ok "mismo contenido a los dos lados (sha256 del Makefile coincide)"
+if git -C "$RAIZ" --no-optional-locks bundle create "$BUNDLE" --all >/dev/null 2>&1; then
+    ok "bundle creado en el Mac (rama $RAMA, HEAD ${HEAD_MAC:0:8})"
 else
-    fallo "el Makefile difiere entre Mac y VM: no es el mismo arbol"
-    info "mac: ${SUMA_MAC:0:16}...  vm: ${SUMA_VM:0:16}..."
+    fallo "no he podido crear el bundle del repo"
 fi
 
-TESTIGO="$RAIZ/.b0-testigo-$$"
-echo "escrito en el Mac a las $(date +%H:%M:%S)" > "$TESTIGO"
-if envm test -f "$DESTINO/$(basename "$TESTIGO")"; then
-    ok "escritura Mac -> VM: el archivo aparece dentro sin redesplegar nada"
+if multipass transfer "$BUNDLE" "$VM:/tmp/fwdash.bundle" >/dev/null 2>&1; then
+    ok "bundle transferido a la VM (sin credenciales y sin red)"
 else
-    fallo "escritura Mac -> VM: el archivo nuevo no se ve en la VM"
+    fallo "multipass transfer fallo"
 fi
-rm -f "$TESTIGO"
+rm -f "$BUNDLE"
 
-TESTIGO_VM=".b0-testigo-vm-$$"
-if envm bash -c "echo desde-la-vm > $DESTINO/$TESTIGO_VM"; then
-    if [[ -f "$RAIZ/$TESTIGO_VM" ]]; then
-        ok "escritura VM -> Mac: el montaje es de lectura y escritura"
-    else
-        fallo "escritura VM -> Mac: el archivo no llego al Mac"
-    fi
+envm rm -rf "$DESTINO" >/dev/null 2>&1
+if envm git clone --branch "$RAMA" /tmp/fwdash.bundle "$DESTINO" >/dev/null 2>&1; then
+    ok "repo clonado en $VM:$DESTINO"
 else
-    fallo "la VM no ha podido escribir en $DESTINO (montaje de solo lectura?)"
+    fallo "el clonado dentro de la VM fallo"
 fi
-rm -f "$RAIZ/$TESTIGO_VM"
+
+# Contar y leer, no `test -f`: la primera version de este arnes dio verde sobre
+# un montaje roto porque `test -f` pasa aunque no se pueda leer nada.
+N_ENTRADAS="$(envm bash -c "ls -1 '$DESTINO' 2>/dev/null | wc -l" | tr -d ' ')"
+if [[ "${N_ENTRADAS:-0}" -gt 5 ]]; then
+    ok "el arbol esta dentro de la VM ($N_ENTRADAS entradas en $DESTINO)"
+else
+    fallo "$DESTINO tiene ${N_ENTRADAS:-0} entradas: el codigo no ha llegado"
+fi
+
+if [[ -n "$(envm head -1 "$DESTINO/Makefile")" ]]; then
+    ok "se puede LEER el codigo dentro de la VM"
+else
+    fallo "no se puede leer $DESTINO/Makefile"
+fi
+
+# La prueba fuerte: mismo commit a los dos lados. Compara el arbol ENTERO, no un
+# archivo suelto, y ademas demuestra que dentro hay un repo de git de verdad.
+HEAD_VM="$(envm git -C "$DESTINO" rev-parse HEAD)"
+if [[ -n "$HEAD_VM" && "$HEAD_VM" == "$HEAD_MAC" ]]; then
+    ok "la VM esta en el mismo commit que el Mac (${HEAD_MAC:0:8})"
+else
+    fallo "commits distintos: mac ${HEAD_MAC:0:8} / vm ${HEAD_VM:0:8}"
+fi
+
+if [[ -n "$(envm test -x "$DESTINO/infra/scripts/panic_reset.sh" && echo x)" ]]; then
+    ok "panic_reset.sh esta en la VM y es ejecutable (lo necesita B4)"
+else
+    aviso "panic_reset.sh no es ejecutable dentro de la VM; B4 lo necesita"
+fi
 
 # --------------------------------------------------------------------------- #
 paso "4. Datos que hacen falta luego"
