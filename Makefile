@@ -175,6 +175,27 @@ recon-cargado: ## A2 (3/3): captura con el ruleset cargado. Solo lectura.
 	multipass exec $(VM) -- $(IPT) -L -v -n -x  > $(FIXTURES)/cargado/list_verbose_exact.txt
 	multipass exec $(VM) -- sudo env LC_ALL=C iptables-save > $(FIXTURES)/cargado/iptables_save.txt
 
+# `make recon` sobrescribe las fixtures commiteadas. Cuando lo que quieres es
+# SABER si han cambiado —por ejemplo tras recrear la VM con otra version de
+# iptables— hay que capturar a otro sitio y comparar, no machacar la evidencia.
+# FIXTURES se puede sobreescribir en la linea de comandos, asi que basta con eso.
+NUEVAS := /tmp/recon-nuevas
+
+.PHONY: recon-diff
+recon-diff: ## Captura fixtures a /tmp y las compara con las commiteadas. NO toca el repo
+	@rm -rf $(NUEVAS)
+	@$(MAKE) --no-print-directory recon FIXTURES=$(NUEVAS)
+	@echo
+	@echo "=== diferencias con las fixtures commiteadas ==="
+	@if diff -ru $(FIXTURES) $(NUEVAS); then \
+		echo "SIN DIFERENCIAS: esta version de iptables imprime igual."; \
+		echo "El parser no necesita cambios; basta con actualizar version.txt."; \
+	else \
+		echo; \
+		echo "HAY DIFERENCIAS (arriba). Eso es justo lo que el parser tiene que aguantar."; \
+		echo "Siguiente paso: 'make test' y ver si test_parser.py sigue pasando."; \
+	fi
+
 .PHONY: recon-reset
 recon-reset: ## Deshace en la VM lo que sembro `make recon`
 	multipass transfer infra/scripts/recon_seed.sh $(VM):/tmp/recon_seed.sh

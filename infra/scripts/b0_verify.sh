@@ -56,6 +56,13 @@ fallo() { printf '   \033[31mFALLO\033[0m %s\n' "$*"; RESULTADOS+=("FALLO $*"); 
 aviso() { printf '   \033[33mAVISO\033[0m %s\n' "$*"; RESULTADOS+=("AVISO $*"); }
 info()  { printf '         %s\n' "$*"; }
 
+# `</dev/null` NO es cosmetico. El comando va a segundo plano, y `multipass exec`
+# reenvia la entrada estandar: un proceso en segundo plano que intenta leer del
+# terminal recibe SIGTTIN y queda SUSPENDIDO. Sigue vivo para `kill -0`, asi que
+# el centinela lo espera hasta el limite y lo mata con 137 — aunque el comando
+# remoto ya haya terminado. Fue exactamente lo que paso con `git clone`: 0,09 s
+# lanzado a mano, 137 lanzado desde el arnes, y el repo clonado correctamente.
+#
 # Limite de segundos para cada comando dentro de la VM. macOS no trae `timeout`
 # (es de coreutils de GNU), asi que se vigila a mano: el comando va al fondo y
 # un centinela lo mata si se pasa del limite.
@@ -67,13 +74,22 @@ info()  { printf '         %s\n' "$*"; }
 # esperando al sshfs que sirve multipassd.
 LIMITE_VM="${LIMITE_VM:-20}"
 
+# Un solo limite para todo no vale. 20 s sobran para leer una linea y se quedan
+# cortos para un `git clone` que escribe el arbol entero en una VM recien creada
+# con las caches frias: paso justo eso, el centinela mato un clonado que ya casi
+# habia terminado y el arnes lo conto como fallo mientras las comprobaciones
+# siguientes decian que el codigo estaba dentro y en el commit correcto.
+# Las llamadas largas lo suben con:  LIMITE=240 envm_err <comando>
+LIMITE_CLONE="${LIMITE_CLONE:-240}"
+
 # Ejecuta un comando dentro de la VM y devuelve su salida limpia.
 # Devuelve != 0 si el comando falla O si se pasa de LIMITE_VM segundos.
 envm() {
-    local tmp pid vigia rc
+    local tmp pid vigia rc lim
+    lim="${LIMITE:-$LIMITE_VM}"
     # Forma portable: `mktemp -t nombre` vale en BSD (macOS) pero GNU exige X's.
     tmp="$(mktemp "${TMPDIR:-/tmp}/b0exec.XXXXXX")"
-    multipass exec "$VM" -- "$@" >"$tmp" 2>/dev/null &
+    multipass exec "$VM" -- "$@" >"$tmp" 2>/dev/null </dev/null &
     pid=$!
     # El centinela mira cada decima si el comando sigue vivo, para poder salir en
     # cuanto termine. Con un `sleep $LIMITE_VM` de una pieza no se puede: bash no
@@ -81,7 +97,33 @@ envm() {
     # limite entero (20s x 15 llamadas = 5 minutos de espera pura).
     (
         i=0
-        while [[ $i -lt $((LIMITE_VM * 10)) ]]; do
+        while [[ $i -lt $((lim * 10)) ]]; do
+            kill -0 "$pid" 2>/dev/null || exit 0
+            sleep 0.1
+            i=$((i + 1))
+        done
+        kill -KILL "$pid" 2>/dev/null
+    ) &
+    vigia=$!
+    wait "$pid" 2>/dev/null; rc=$?
+    wait "$vigia" 2>/dev/null
+    cat "$tmp"
+    rm -f "$tmp"
+    return $rc
+}
+
+# Igual que envm pero SIN tirar stderr: para los pasos donde, si falla, lo unico
+# que importa es el mensaje de error. `envm` se lo tragaba y dejaba un "fallo" sin
+# causa, que obliga a reproducir a mano lo que el arnes acaba de hacer.
+envm_err() {
+    local tmp pid vigia rc lim
+    lim="${LIMITE:-$LIMITE_VM}"
+    tmp="$(mktemp "${TMPDIR:-/tmp}/b0exec.XXXXXX")"
+    multipass exec "$VM" -- "$@" >"$tmp" 2>&1 </dev/null &
+    pid=$!
+    (
+        i=0
+        while [[ $i -lt $((lim * 10)) ]]; do
             kill -0 "$pid" 2>/dev/null || exit 0
             sleep 0.1
             i=$((i + 1))
@@ -280,18 +322,30 @@ else
     fallo "no he podido crear el bundle del repo"
 fi
 
-if multipass transfer "$BUNDLE" "$VM:/tmp/fwdash.bundle" >/dev/null 2>&1; then
+SALIDA="$(multipass transfer "$BUNDLE" "$VM:/tmp/fwdash.bundle" 2>&1)"
+if [[ $? -eq 0 ]]; then
     ok "bundle transferido a la VM (sin credenciales y sin red)"
 else
     fallo "multipass transfer fallo"
+    printf '%s\n' "$SALIDA" | sed 's/^/         /'
 fi
 rm -f "$BUNDLE"
 
-envm rm -rf "$DESTINO" >/dev/null 2>&1
-if envm git clone --branch "$RAMA" /tmp/fwdash.bundle "$DESTINO" >/dev/null 2>&1; then
+# El destino tiene que estar vacio: `git clone` se niega si existe con contenido,
+# y ese error ("already exists and is not an empty directory") despista mucho
+# cuando la causa real fue que un intento anterior se quedo a medias.
+LIMITE=60 envm_err rm -rf "$DESTINO" >/dev/null 2>&1
+if [[ -n "$(envm bash -c "[ -e '$DESTINO' ] && echo existe")" ]]; then
+    fallo "no he podido vaciar $DESTINO antes de clonar"
+fi
+
+SALIDA="$(LIMITE=$LIMITE_CLONE envm_err git clone --branch "$RAMA" /tmp/fwdash.bundle "$DESTINO")"
+if [[ $? -eq 0 ]]; then
     ok "repo clonado en $VM:$DESTINO"
 else
-    fallo "el clonado dentro de la VM fallo"
+    fallo "el clonado dentro de la VM fallo. Lo que dijo git:"
+    printf '%s\n' "${SALIDA:-(sin salida: el comando se colgo o no arranco)}" | sed 's/^/         /'
+    aviso "Comprueba a mano:  multipass exec $VM -- git clone --branch $RAMA /tmp/fwdash.bundle /tmp/prueba"
 fi
 
 # Contar y leer, no `test -f`: la primera version de este arnes dio verde sobre
