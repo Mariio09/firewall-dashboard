@@ -112,6 +112,12 @@ vm-smoke: ## Recorre el arnes de B0 con un multipass falso (no necesita VM)
 
 .PHONY: vm-clone
 vm-clone: ## Clona el repo dentro de la VM desde un bundle (primera vez)
+	@SUCIO="$$(git --no-optional-locks status --porcelain)"; \
+	if [ -n "$$SUCIO" ]; then \
+		printf '\033[33mAVISO\033[0m: hay cambios sin commitear. NO viajan a la VM (ADR-0013):\n'; \
+		echo "$$SUCIO" | sed 's/^/       /'; \
+		printf '       Si esperabas que uno de estos arreglara algo, commitealo antes.\n\n'; \
+	fi
 	git --no-optional-locks bundle create $(BUNDLE) --all
 	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
 	-multipass exec $(VM) -- rm -rf /home/ubuntu/app </dev/null
@@ -121,6 +127,12 @@ vm-clone: ## Clona el repo dentro de la VM desde un bundle (primera vez)
 
 .PHONY: vm-sync
 vm-sync: ## Lleva a la VM lo commiteado de la rama actual
+	@SUCIO="$$(git --no-optional-locks status --porcelain)"; \
+	if [ -n "$$SUCIO" ]; then \
+		printf '\033[33mAVISO\033[0m: hay cambios sin commitear. NO viajan a la VM (ADR-0013):\n'; \
+		echo "$$SUCIO" | sed 's/^/       /'; \
+		printf '       Si esperabas que uno de estos arreglara algo, commitealo antes.\n\n'; \
+	fi
 	git --no-optional-locks bundle create $(BUNDLE) --all
 	multipass transfer $(BUNDLE) $(VM):$(BUNDLE)
 	multipass exec $(VM) -- git -C /home/ubuntu/app fetch $(BUNDLE) $(RAMA) </dev/null
