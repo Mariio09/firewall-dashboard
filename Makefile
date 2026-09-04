@@ -246,6 +246,30 @@ recon-reset: ## Deshace en la VM lo que sembro `make recon`
 test-vm: ## Tests que necesitan iptables real (ejecutar DENTRO de la VM)
 	cd $(BACKEND) && pytest -m requires_iptables
 
+# --------------------------------------------------------------------------- #
+# Bloque B4 — el auto-bloqueo
+# --------------------------------------------------------------------------- #
+
+.PHONY: b4-probe
+b4-probe: ## B4 paso 0: mide si el ancla de recuperacion es real. SOLO LECTURA
+	bash infra/scripts/b4_probe_anchor.sh
+
+FASE ?= todas
+
+.PHONY: b4-verify
+b4-verify: ## B4: provoca el auto-bloqueo en la VM y comprueba que se vuelve. FASE=guardian|ssh|cidr|todas
+	bash infra/scripts/b4_verify.sh $(FASE)
+
 .PHONY: panic
 panic: ## Emergencia: elimina las cadenas FWDASH_* y restaura el acceso
-	multipass exec $(VM) -- sudo bash /home/ubuntu/app/infra/scripts/panic_reset.sh
+	@# `</dev/null` NO es adorno (leccion de B0): `multipass exec` reenvia stdin y
+	@# sin redirigirlo el comando remoto se queda esperando entrada que no llega.
+	@# En una emergencia, un comando que se cuelga en silencio es lo peor posible.
+	@# Se intenta primero el despliegue de /opt, que es lo que corre de verdad, y
+	@# se cae al clon de trabajo si aquel no esta.
+	multipass exec $(VM) -- sudo bash -c \
+		'if [ -f /opt/firewall-dashboard/infra/scripts/panic_reset.sh ]; then \
+		    bash /opt/firewall-dashboard/infra/scripts/panic_reset.sh; \
+		 else \
+		    bash /home/ubuntu/app/infra/scripts/panic_reset.sh; \
+		 fi' </dev/null

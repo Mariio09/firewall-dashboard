@@ -78,6 +78,53 @@ def test_valores_invalidos_se_rechazan(campo: str, valor: object) -> None:
         Settings(_env_file=None, **{campo: valor})
 
 
+@pytest.mark.parametrize(
+    ("entorno", "backend"),
+    [("vm", "iptables"), ("prod", "iptables"), ("dev", "iptables"), ("vm", "fake")],
+)
+def test_sin_cidr_de_gestion_no_arranca_cuando_las_reglas_son_reales(
+    entorno: str, backend: str
+) -> None:
+    """ADR-0016: la red desde la que se administra se declara, no se supone.
+
+    `dev` con el backend real entra tambien: lo que hace peligroso el hueco no es
+    el nombre del entorno, es que las reglas lleguen a iptables.
+    """
+    with pytest.raises(PydanticValidationError) as excinfo:
+        Settings(
+            _env_file=None,
+            app_env=entorno,
+            jwt_secret_key="x" * 64,
+            firewall_backend=backend,
+            management_allowed_cidr=None,
+        )
+    assert "MANAGEMENT_ALLOWED_CIDR" in str(excinfo.value)
+
+
+def test_con_backend_fake_el_cidr_es_de_laboratorio_y_se_avisa() -> None:
+    """Contraprueba del test anterior: sin reglas reales SI se arranca.
+
+    Y lo que se rellena no es una red plausible, que es lo que se acaba de
+    prohibir, sino una que nadie puede confundir con la suya.
+    """
+    with pytest.warns(RuntimeWarning, match="MANAGEMENT_ALLOWED_CIDR"):
+        settings = Settings(_env_file=None, app_env="dev", firewall_backend="fake")
+    assert str(settings.management_allowed_cidr) == "127.0.0.0/8"
+
+
+def test_el_default_que_provocaba_el_auto_bloqueo_ya_no_existe() -> None:
+    """La regresion concreta que cierra el ADR-0016.
+
+    `192.168.64.0/24` era el rango HABITUAL del bridge de Multipass en macOS, no
+    uno garantizado: en el Mac donde se desarrolla esto la red real es otra. Un
+    default que casi siempre acierta es peor que ninguno cuando lo que esta en
+    juego es el acceso a la maquina.
+    """
+    campo = Settings.model_fields["management_allowed_cidr"]
+    assert campo.default is None
+    assert "192.168.64.0/24" not in str(campo)
+
+
 def test_get_settings_esta_cacheado() -> None:
     """Leer y validar el `.env` en cada peticion no aporta nada."""
     assert get_settings() is get_settings()

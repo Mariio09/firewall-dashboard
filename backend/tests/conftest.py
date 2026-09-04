@@ -61,6 +61,10 @@ def settings() -> Settings:
         database_url="sqlite://",  # en memoria
         jwt_secret_key="clave-de-prueba-no-usar-fuera-de-los-tests",
         firewall_backend="fake",
+        # Explicito desde el ADR-0016: ya no tiene default. Con `fake` bastaria
+        # con dejarlo vacio, pero entonces cada test arrastraria el RuntimeWarning
+        # del valor de laboratorio y la suite dejaria de ser silenciosa.
+        management_allowed_cidr="192.168.64.0/24",
         log_format="console",
         log_level="WARNING",
         cors_origins="http://localhost:5173",

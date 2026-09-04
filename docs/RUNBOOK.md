@@ -6,14 +6,47 @@
 
 ## Lo primero que hay que saber
 
-**`multipass shell firewall-lab` no pasa por TCP.**
+> **Corrección de B4 (2026-09-04).** Hasta esta fecha, este runbook empezaba
+> diciendo que `multipass shell` no pasa por TCP y que por eso sigue funcionando
+> aunque cierres la red. **Es falso, y estaba escrito en el sitio donde más caro
+> sale equivocarse.** Se midió con `make b4-probe`.
 
-Usa el canal de control del hipervisor, no la red de la VM. Eso significa que
-sigue funcionando aunque hayas cerrado el firewall a cal y canto y no puedas hacer
-ni ping. Es tu vía de escape fuera de banda, y es la razón por la que este proyecto
-es seguro de romper.
+**`multipass shell` y `multipass exec` entran por SSH, por la red de la VM.**
 
-Si te bloqueas: no entres en pánico, abre una shell y ejecuta el reset.
+La cadena de procesos dentro de la VM lo dice sin ambigüedad:
+
+```
+bash(8274) <- sudo(8273) <- sshd(8272) <- sshd(8225) <- sshd(2290) <- systemd(1)
+```
+
+y el otro extremo de la conexión al puerto 22 es `192.168.252.1`, que es el Mac.
+No hay vsock, ni puertos virtio, ni agente del hipervisor: hay un `authorized_keys`
+con la clave de multipassd. **Un `DROP` que alcance al puerto 22 cierra también la
+puerta de emergencia.**
+
+### Lo que sí te saca de un bloqueo
+
+1. **Una sesión abierta ANTES de aplicar.** El guardián de conntrack
+   (`RELATED,ESTABLISHED`, primera regla de las tres cadenas) mantiene viva una
+   conexión ya establecida; lo que se pierde es la capacidad de abrir una nueva.
+   Por eso: **abre `multipass shell firewall-lab` en otra terminal antes de tocar
+   nada.** No es una recomendación de estilo, es la diferencia entre volver o no.
+2. **Reiniciar la VM.** `iptables` vive en memoria y en esta VM no hay nada que lo
+   restaure al arrancar: `ufw` está habilitado como unidad pero **inactivo**, y no
+   hay `iptables-persistent`. Compruébalo antes de confiar en ello:
+   `make b4-probe` lo mide en la sección V4.
+   ⚠️ Con `FIREWALL_BACKEND=iptables` y `AUTO_APPLY=true`, el servicio arranca
+   solo y puede volver a aplicar la política que te dejó fuera. Párale primero:
+   `systemctl disable --now firewall-dashboard`.
+3. **Snapshots.** `multipass snapshot` existe desde 1.13 (aquí, 1.16.3) y no
+   depende de la red de la VM. Requiere la VM parada.
+
+### Lo que aún no está medido
+
+Que `multipass stop --force` funcione con el 22 cortado es **plausible pero no
+comprobado**: el apagado limpio puede ir por SSH. Hasta que se mida, no cuenta
+como vía de escape. Distinguir lo medido de lo supuesto es la lección entera de
+este bloque.
 
 ---
 
@@ -22,7 +55,8 @@ Si te bloqueas: no entres en pánico, abre una shell y ejecuta el reset.
 **Síntomas:** el dashboard no carga, `curl` a la API da timeout, `ssh` no conecta.
 
 ```bash
-# 1. Entrar por el canal fuera de banda
+# 1. Entrar. Si tienes una sesion ya abierta, USA ESA: una nueva puede no entrar
+#    (ver arriba: multipass va por SSH, y el 22 puede estar cortado)
 multipass shell firewall-lab
 
 # 2. Ver qué has hecho
@@ -59,6 +93,36 @@ sudo iptables -F FWDASH_OUTPUT          # vacía solo esa cadena
 Si esto ocurre, comprueba también que las reglas guardián de `OUTPUT` se están
 emitiendo: debe haber un `ACCEPT` de `ESTABLISHED,RELATED` en la primera posición.
 Si no está, es un bug del renderer, no un error de uso.
+
+---
+
+## Emergencia 2-bis — No puedo abrir NINGUNA sesión
+
+**Síntomas:** `multipass shell` y `multipass exec` se quedan colgados o dan
+timeout. Es el caso que el runbook viejo daba por imposible.
+
+Por orden, de menos a más destructivo:
+
+```bash
+# 1. ¿Tienes una sesión abierta de antes? Úsala. El guardián de conntrack la
+#    mantiene viva aunque el 22 esté cerrado a cal y canto.
+sudo bash /opt/firewall-dashboard/infra/scripts/panic_reset.sh
+
+# 2. Si no la tienes: reiniciar. iptables no persiste (compruébalo con
+#    'make b4-probe' antes de necesitarlo).
+multipass stop firewall-lab && multipass start firewall-lab
+
+# 3. Y en cuanto entres, ANTES de que el servicio reaplique la política:
+sudo systemctl disable --now firewall-dashboard
+
+# 4. Snapshot previo, si lo hiciste:
+multipass restore firewall-lab.<nombre>
+```
+
+**La lección para la próxima vez** está en `infra/scripts/b4_bloqueo.sh`: arma la
+reversión **antes** de aplicar, no después. Un `systemd-run --on-active=90` que
+ejecute `panic_reset.sh` convierte "me he bloqueado" en "estuve bloqueado noventa
+segundos". Es el patrón de `iptables-apply`, y `make b4-verify` lo ejercita entero.
 
 ---
 
@@ -165,3 +229,17 @@ make vm-clone && make vm-deploy    # el codigo dentro, y desplegado en /opt
 
 Son dos minutos. Es una VM de laboratorio: destruirla y recrearla es una
 herramienta legítima, no una derrota.
+
+---
+
+## Antes de aplicar tu primera política real
+
+Una lista corta, toda ella salida de B4:
+
+- [ ] `multipass shell firewall-lab` abierto en otra terminal, **antes** de aplicar.
+- [ ] `sudo iptables-save > ~/iptables-backup-$(date +%Y%m%d-%H%M%S).rules` en la VM.
+- [ ] `MANAGEMENT_ALLOWED_CIDR` **consultado, no supuesto**:
+      `multipass exec firewall-lab -- ip -4 -o addr show scope global` (ADR-0016).
+- [ ] Saber que el guardián protege el puerto de gestión **y solo ese**: el 22, por
+      donde entra multipass, no lo protege nadie.
+- [ ] `GET /firewall/preview` leído: enseña el argv exacto sin ejecutarlo.

@@ -54,7 +54,12 @@ class FakeFirewallBackend:
         *,
         chain_prefix: str = "FWDASH",
         management_port: int = 8000,
-        management_cidr: str = "192.168.64.0/24",
+        # 127.0.0.0/8 y no una red plausible: este default solo lo usan los tests
+        # y quien construya el backend a mano —`deps` siempre pasa el valor de
+        # `Settings`, que desde el ADR-0016 es obligatorio con backend real—. Un
+        # CIDR de gestion que parece bueno y no lo es escribe la regla guardian
+        # que te bloquea, asi que aqui tampoco se deja uno que engañe.
+        management_cidr: str = "127.0.0.0/8",
     ) -> None:
         self._chain_prefix = chain_prefix
         self._management_port = management_port

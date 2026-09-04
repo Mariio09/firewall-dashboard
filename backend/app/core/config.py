@@ -12,6 +12,7 @@ from __future__ import annotations
 import secrets
 import warnings
 from functools import lru_cache
+from ipaddress import IPv4Network
 from typing import Literal
 
 from pydantic import Field, IPvAnyNetwork, SecretStr, model_validator
@@ -35,8 +36,8 @@ class Settings(BaseSettings):
         env_file=".env",
         env_file_encoding="utf-8",
         case_sensitive=False,
-        # Los valores por defecto tambien se validan: asi `management_allowed_cidr`
-        # es una red de verdad incluso cuando nadie la define en el `.env`.
+        # Los valores por defecto tambien se validan: lo que se declara en el
+        # codigo pasa por el mismo filtro que lo que llega del `.env`.
         validate_default=True,
         # Un `.env` puede traer variables de otras herramientas; no es motivo
         # para que la aplicacion se niegue a arrancar.
@@ -84,7 +85,11 @@ class Settings(BaseSettings):
 
     # --- Proteccion contra auto-bloqueo ------------------------------------- #
     management_port: int = Field(default=8000, ge=1, le=65535)
-    management_allowed_cidr: IPvAnyNetwork = Field(default="192.168.64.0/24")  # type: ignore[assignment]
+    # SIN VALOR POR DEFECTO, y es el punto entero del ADR-0016: este campo
+    # alimenta la regla guardian que abre el puerto de gestion, asi que un
+    # default plausible pero falso escribe la regla que te bloquea. Cuando las
+    # reglas llegan a iptables de verdad, hay que declararlo. Ver el validador.
+    management_allowed_cidr: IPvAnyNetwork | None = None
 
     # ----------------------------------------------------------------------- #
     # Derivados
@@ -129,6 +134,48 @@ class Settings(BaseSettings):
         warnings.warn(
             "JWT_SECRET_KEY vacia: se ha generado una clave efimera para desarrollo. "
             "Los tokens emitidos dejaran de ser validos al reiniciar el proceso.",
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        return self
+
+    @model_validator(mode="after")
+    def _validar_cidr_de_gestion(self) -> Settings:
+        """Sin `MANAGEMENT_ALLOWED_CIDR` no se arranca contra iptables real (ADR-0016).
+
+        La regla guardian de gestion abre el puerto de la API **desde esta red**.
+        Si el valor es plausible pero falso, el guardian abre el puerto a una
+        subred donde no esta nadie y el resultado es que **la regla escrita para
+        evitar el auto-bloqueo es la que lo provoca**. El fallo no lo detecta
+        ningun validador de tipos: un CIDR valido no es un CIDR verdadero.
+
+        Se exige cuando las reglas van a llegar a iptables de verdad, que no es
+        exactamente lo mismo que `vm`/`prod`: `dev` con el backend real tambien
+        escribe reglas reales. Con el backend `fake` se rellena con una red de
+        laboratorio evidentemente inutil como red de gestion, para que nadie la
+        confunda con un valor bueno, y se avisa.
+        """
+        if self.management_allowed_cidr is not None:
+            return self
+
+        if self.is_strict_environment or self.firewall_backend == "iptables":
+            raise ValueError(
+                "MANAGEMENT_ALLOWED_CIDR es obligatoria con APP_ENV="
+                f"{self.app_env} y FIREWALL_BACKEND={self.firewall_backend}: sin ella "
+                "la regla guardian no sabe desde que red se te permite administrar. "
+                "Consultala, no la supongas: "
+                "multipass exec firewall-lab -- ip -4 -o addr show scope global"
+            )
+
+        # `IPv4Network` y no `IPvAnyNetwork(...)`: en pydantic 2.13 `IPvAnyNetwork`
+        # es un alias de tipo (`IPv4Network | IPv6Network`), no una clase que se
+        # pueda llamar. En runtime colaba y los 474 tests pasaban; quien lo caza
+        # es mypy. Vale la pena recordarlo: los tests verdes no son un typecheck.
+        self.management_allowed_cidr = IPv4Network("127.0.0.0/8")
+        warnings.warn(
+            "MANAGEMENT_ALLOWED_CIDR vacia: se usa 127.0.0.0/8, una red de laboratorio "
+            "que no sirve para administrar nada. Con FIREWALL_BACKEND=iptables es "
+            "obligatoria y la aplicacion no arrancara sin ella.",
             RuntimeWarning,
             stacklevel=2,
         )

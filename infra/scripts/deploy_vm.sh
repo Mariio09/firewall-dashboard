@@ -122,6 +122,17 @@ else
     # host-only y no esta expuesta a la LAN.
     VM_IP="$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1)"
     VM_CIDR="$(echo "$VM_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')"
+    # El CIDR de gestion NO tiene valor por defecto desde el ADR-0016: es lo que
+    # entra en la regla guardian que abre el puerto de la API. Si la derivacion
+    # falla —sin interfaz global, un `ip` que imprime otra cosa—, escribir un
+    # valor a medias seria peor que no desplegar: la app arrancaria con un
+    # guardian que apunta a la nada. Se para aqui.
+    if [[ ! "$VM_CIDR" =~ ^[0-9]{1,3}(\.[0-9]{1,3}){3}/[0-9]{1,2}$ ]]; then
+        echo "ERROR: no se pudo derivar MANAGEMENT_ALLOWED_CIDR de la interfaz." >&2
+        echo "       VM_IP='$VM_IP'  VM_CIDR='$VM_CIDR'" >&2
+        echo "       Comprueba: ip -4 -o addr show scope global" >&2
+        exit 1
+    fi
     ADMIN_PASS="$(openssl rand -base64 18 | tr -d '/+=' | head -c 20)"
 
     # OJO: systemd lee este archivo como EnvironmentFile y se queda con la linea
