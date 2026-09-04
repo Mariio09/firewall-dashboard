@@ -96,6 +96,18 @@ find "$DEPLOY_DIR" -path "$DEPLOY_DIR/backend/.venv" -prune -o -type f -exec chm
 chmod 0755 "$DEPLOY_DIR"/infra/scripts/*.sh
 echo "$REVISION" > "$DEPLOY_DIR/.desplegado"
 chmod 0644 "$DEPLOY_DIR/.desplegado"
+
+# El mensaje de bienvenida se REINSTALA en cada despliegue desde `infra/motd.txt`,
+# que es su unica fuente. Motivo (B4): el motd que escribio cloud-init se queda
+# congelado en lo que el repo decia el dia que se creo la VM, y lo que decia era
+# "multipass NO pasa por TCP" -- falso, y justo en el texto que se lee con prisa
+# cuando te acabas de bloquear. Refrescarlo aqui hace imposible esa deriva.
+if [[ -f "$DEPLOY_DIR/infra/motd.txt" ]]; then
+    install -o root -g root -m 0644 "$DEPLOY_DIR/infra/motd.txt" /etc/motd
+    echo "    /etc/motd actualizado desde infra/motd.txt"
+else
+    echo "    AVISO: no hay infra/motd.txt; /etc/motd se queda como estaba" >&2
+fi
 echo "    $(find "$DEPLOY_DIR" -type f | wc -l) archivos desplegados"
 
 # --------------------------------------------------------------------------- #
@@ -118,8 +130,10 @@ if [[ -f "$CONF_FILE" ]]; then
     echo "    ya existe: no se toca (contiene el secreto JWT en uso)"
 else
     # IP de la interfaz de Multipass. El backend NO puede hacer bind a 127.0.0.1
-    # si el frontend del Mac tiene que llegar; la red 192.168.64.0/24 es
-    # host-only y no esta expuesta a la LAN.
+    # si el frontend del Mac tiene que llegar; la red host-only de Multipass no
+    # esta expuesta a la LAN. Su rango se DERIVA aqui abajo y no se escribe: no
+    # es fijo entre maquinas ni entre versiones (en este Mac es 192.168.252.0/24,
+    # no el 192.168.64.0/24 que la documentacion daba por hecho).
     VM_IP="$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1)"
     VM_CIDR="$(echo "$VM_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')"
     # El CIDR de gestion NO tiene valor por defecto desde el ADR-0016: es lo que

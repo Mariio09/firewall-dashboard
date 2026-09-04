@@ -27,6 +27,12 @@ packages:
 write_files:
   # Recordatorio dentro de la propia VM. Cuando te bloqueas, es el momento en que
   # menos ganas tienes de buscar documentacion.
+  #
+  # Aqui va solo el aviso MINIMO, valido desde el primer arranque y sin rutas que
+  # todavia no existen. El procedimiento completo lo instala `deploy_vm.sh` desde
+  # `infra/motd.txt`, que es su unica fuente: asi el motd no se queda diciendo lo
+  # que el repo dejo de decir. Hasta B4 decia "multipass NO pasa por TCP", que es
+  # falso y estaba escrito justo donde se lee con prisa.
   - path: /etc/motd
     permissions: "0644"
     content: |
@@ -37,13 +43,10 @@ write_files:
 
        Esta VM ejecuta iptables de verdad. Puedes bloquearte.
 
-       Si te quedas sin acceso por red, esta shell sigue
-       funcionando: multipass NO pasa por TCP.
+       multipass entra por SSH, por el puerto 22 de esta VM:
+       un DROP que lo alcance cierra tambien esta puerta.
 
-       Reset de emergencia:
-         sudo bash /home/ubuntu/app/infra/scripts/panic_reset.sh
-
-       Documentacion: /home/ubuntu/app/docs/RUNBOOK.md
+       Lee el RUNBOOK antes de aplicar tu primera regla real.
       ===========================================================
 
 runcmd:

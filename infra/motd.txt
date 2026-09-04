@@ -1,0 +1,24 @@
+
+===========================================================
+ firewall-lab — laboratorio de firewall-dashboard
+===========================================================
+
+ Esta VM ejecuta iptables de verdad. Puedes bloquearte.
+
+ OJO: multipass entra por SSH, por el puerto 22 de esta VM.
+ Medido en B4 (make b4-probe). Un DROP que alcance al 22
+ cierra tambien esta puerta. El guardian protege el 8000
+ de la API, y solo ese puerto.
+
+ Lo que si te saca:
+   1. Una sesion ya abierta antes de aplicar (la mantiene
+      viva el guardian de conntrack).
+   2. Reiniciar la VM: iptables no persiste aqui.
+      Y luego: systemctl disable --now firewall-dashboard
+   3. multipass snapshot / restore, desde el Mac.
+
+ Reset de emergencia:
+   sudo bash /opt/firewall-dashboard/infra/scripts/panic_reset.sh
+
+ Documentacion: /opt/firewall-dashboard/docs/RUNBOOK.md
+===========================================================
