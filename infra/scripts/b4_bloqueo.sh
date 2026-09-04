@@ -49,6 +49,11 @@ SELLO="$DIR_LOG/$FASE.estado"
 [[ $EUID -eq 0 ]] || { echo "ERROR: se ejecuta como root" >&2; exit 1; }
 mkdir -p "$DIR_LOG"
 
+# Un log por ejecucion. Antes se acumulaba en el mismo archivo y el volcado que
+# hace b4_verify.sh mezclaba esta ejecucion con las anteriores: 490 lineas para
+# leer 30. El anterior no se pierde, se aparta.
+[[ -f "$LOG" ]] && mv "$LOG" "$LOG.anterior"
+
 registrar() { printf '%s  %s\n' "$(date -Iseconds)" "$*" | tee -a "$LOG"; }
 
 registrar "=== fase '$FASE', ventana de ${VENTANA}s ==="
@@ -192,5 +197,19 @@ registrar "conexiones al 22 vivas ahora: $(ss -tn state established '( sport = :
 # decir 'la mantiene conntrack' sin mirarlos seria repetir la teoria.
 registrar "contadores de los guardianes de FWDASH_INPUT:"
 iptables -L FWDASH_INPUT -v -n -x --line-numbers 2>/dev/null | sed 's/^/    /' | tee -a "$LOG" >/dev/null
+
+# Un segundo volcado, ya con trafico encima. El de arriba sale a los milisegundos
+# de aplicar y todos los contadores estan a cero: dice que las reglas existen, no
+# cual absorbe los paquetes. En 'guardian' y 'cidr' eso lo resuelve b4_verify.sh
+# leyendo los contadores despues de su curl, pero en la fase 'ssh' NO PUEDE: para
+# preguntar necesitaria una sesion nueva, que es justo lo que esta cortado. Asi
+# que la medida tardia se toma aqui dentro, que es el unico sitio con acceso.
+sleep 30
+registrar "contadores a los 30s del bloqueo (con trafico del Mac ya encima):"
+TABLA="$(iptables -L FWDASH_INPUT -v -n -x 2>/dev/null)"
+printf '%s\n' "$TABLA" | sed 's/^/    /' | tee -a "$LOG" >/dev/null
+PKTS_GUARDIAN="$(awk '/fwdash:guardian:management/{print $1}' <<< "$TABLA")"
+PKTS_DROP="$(awk '/b4-auto-bloqueo/{print $1}' <<< "$TABLA")"
+registrar "CONTADORES_TARDIOS guardian=${PKTS_GUARDIAN:-0} drop=${PKTS_DROP:-0}"
 
 registrar "=== bloqueo activo. El rescate se dispara solo. ==="

@@ -255,6 +255,11 @@ b4-probe: ## B4 paso 0: mide si el ancla de recuperacion es real. SOLO LECTURA
 	bash infra/scripts/b4_probe_anchor.sh
 
 FASE ?= todas
+APP_DIR ?= /opt/firewall-dashboard
+
+.PHONY: vm-diag-iptables
+vm-diag-iptables: ## Diagnostica por que iptables no responde dentro de la VM
+	multipass exec $(VM) -- sudo bash $(APP_DIR)/infra/scripts/b4_diag_iptables.sh </dev/null
 
 .PHONY: b4-verify
 b4-verify: ## B4: provoca el auto-bloqueo en la VM y comprueba que se vuelve. FASE=guardian|ssh|cidr|todas

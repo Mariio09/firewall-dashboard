@@ -31,6 +31,13 @@ puerta de emergencia.**
    conexión ya establecida; lo que se pierde es la capacidad de abrir una nueva.
    Por eso: **abre `multipass shell firewall-lab` en otra terminal antes de tocar
    nada.** No es una recomendación de estilo, es la diferencia entre volver o no.
+
+   **Medido en B4** (`make b4-verify FASE=ssh`, 2026-09-04): con un `DROP` del 22
+   aplicado, una sesión nueva no entra y **2 conexiones ya establecidas siguieron
+   vivas**. Y ojo al detalle que hace este caso traicionero: **la API seguía
+   respondiendo con normalidad**. Cortar el 22 no toca el 8000, así que el
+   dashboard se ve perfecto desde el navegador mientras tú te has quedado fuera de
+   la máquina.
 2. **Reiniciar la VM.** `iptables` vive en memoria y en esta VM no hay nada que lo
    restaure al arrancar: `ufw` está habilitado como unidad pero **inactivo**, y no
    hay `iptables-persistent`. Compruébalo antes de confiar en ello:
@@ -179,6 +186,7 @@ sudo bash /opt/firewall-dashboard/infra/scripts/b1_verify.sh
 | `Permission denied` al escribir la DB | `firewall.db` es de root: se migró como root en vez de como `fwdash` |
 | `sudo: a password is required` | `USE_SUDO=true` con la unidad instalada. `NoNewPrivileges=yes` anula el setuid de `sudo`: pon `USE_SUDO=false` (ADR-0003) |
 | el valor de una variable trae un comentario pegado | comentario al final de una línea en `/etc/firewall-dashboard/backend.env`: systemd se queda con la línea entera |
+| `iptables: Incompatible with this kernel.` | **la cadena no existe.** Medido en B4 con `iptables v1.8.10 (nf_tables)`: un `-L FWDASH_INPUT` sobre una cadena que no está devuelve ese mensaje, no `No chain/target/match by that name`. No es un problema de kernel ni de módulos: falta `ensure_scaffold()`. Compruébalo creándola (`sudo iptables -N FWDASH_INPUT`) y repitiendo el `-L` |
 
 Si falla por falta de `JWT_SECRET_KEY`, es intencionado: la aplicación se niega a
 arrancar sin secreto en lugar de generar uno al vuelo y darte una falsa sensación

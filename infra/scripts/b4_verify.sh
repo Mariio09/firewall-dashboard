@@ -72,6 +72,22 @@ con_limite() {
     rm -f "$tmp"; return $codigo
 }
 
+# Igual que con_limite pero imprimiendo lo que capturo, para `$(...)`. Ningun
+# `multipass exec` de este arnes puede quedarse colgado sin limite: durante la
+# ventana de bloqueo, colgarse es el comportamiento ESPERADO de la mitad de ellos.
+salida_limitada() {
+    local limite="$1"; shift
+    local tmp; tmp="$(mktemp)"
+    "$@" >"$tmp" 2>&1 & local pid=$!
+    local i=0
+    while kill -0 "$pid" 2>/dev/null; do
+        sleep 1; i=$((i+1))
+        if (( i >= limite )); then kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; break; fi
+    done
+    wait "$pid" 2>/dev/null
+    cat "$tmp"; rm -f "$tmp"
+}
+
 sesion_nueva_funciona() { con_limite 15 multipass exec "$VM" -- true; }
 api_responde()          { con_limite 10 curl -fsS -o /dev/null "http://$IP_VM:8000/health"; }
 
@@ -92,6 +108,22 @@ command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el Mac." >&
     || { echo "ERROR: la VM no esta corriendo." >&2; exit 1; }
 IP_VM="$(multipass info "$VM" | awk '/IPv4/{print $2}')"
 dato "IP de la VM: $IP_VM"
+
+# LO PRIMERO: que iptables funcione. Sin esto no hay arnes que valga, y el modo
+# de fallo es el peor posible -- si `ensure_scaffold` no puede aplicar nada, la
+# sesion sigue viva y la API responde, que es justo lo que este arnes considera
+# EXITO en la fase 'guardian'. Verde sobre un sistema donde no se ejecuto nada.
+# Paso el 2026-09-04: la VM devolvia "iptables: Incompatible with this kernel" y
+# el probe, con su `2>/dev/null`, lo enseño como tres politicas vacias.
+SALIDA_IPT="$(multipass exec "$VM" -- sudo iptables -S </dev/null 2>&1)"
+CODIGO_IPT=$?
+if [[ $CODIGO_IPT -ne 0 || -z "$SALIDA_IPT" ]]; then
+    echo "ERROR: iptables no responde dentro de la VM (codigo $CODIGO_IPT)." >&2
+    echo "       $(head -1 <<< "$SALIDA_IPT")" >&2
+    echo "       Diagnostico: make vm-diag-iptables" >&2
+    exit 1
+fi
+ok "iptables responde en la VM ($(grep -c . <<< "$SALIDA_IPT") lineas, politica INPUT=$(awk '$1=="-P" && $2=="INPUT"{print $3}' <<< "$SALIDA_IPT"))"
 
 # ufw es el unico otro dueño posible de estas cadenas. El probe lo encontro
 # HABILITADO como servicio; lo que importa no es eso, es si esta ACTIVO.
@@ -121,7 +153,7 @@ fi
 # Y la comprobacion que no depende de como ufw redacte su estado: si ufw
 # estuviera filtrando, habria cadenas `ufw-*` con reglas dentro. Se mira el
 # EFECTO en iptables, que es la fuente de verdad para lo que aqui importa.
-REGLAS_UFW="$(multipass exec "$VM" -- sudo iptables -S </dev/null 2>/dev/null | grep -c '^-A ufw')"
+REGLAS_UFW="$(grep -c '^-A ufw' <<< "$SALIDA_IPT")"   # sobre la salida ya validada arriba
 if [[ "${REGLAS_UFW:-0}" -gt 0 ]]; then
     echo "ERROR: hay $REGLAS_UFW reglas en cadenas ufw-* aunque 'ufw status' diga" >&2
     echo "       '${ESTADO_UFW}'. Nadie mas puede estar filtrando durante el arnes." >&2
@@ -177,12 +209,48 @@ for fase in $FASES; do
     esac
 
     UNIDAD="b4-$fase-$(date +%s)"
-    multipass exec "$VM" -- sudo systemd-run --unit="$UNIDAD" --collect \
-        /bin/bash "$APP/infra/scripts/b4_bloqueo.sh" "$fase" "$VENTANA" </dev/null \
-        >/dev/null 2>&1
-    dato "lanzado $UNIDAD dentro de la VM (desacoplado de esta sesion)"
+    # `--no-block` y con limite. Sin `--no-block`, `systemd-run` espera a que el
+    # job de arranque termine y el `multipass exec` no volvia NUNCA: el bloqueo se
+    # aplicaba —las cadenas aparecian montadas en la VM— pero el arnes se quedaba
+    # clavado en esta linea. Un lanzador que no vuelve no se distingue de un
+    # lanzamiento que no ocurrio, asi que ademas de no bloquear, se CONFIRMA por
+    # el sello que el propio script escribe en disco. Que el comando vuelva no es
+    # la prueba de nada; el sello si.
+    con_limite 20 multipass exec "$VM" -- sudo systemd-run --no-block --unit="$UNIDAD" \
+        --collect /bin/bash "$APP/infra/scripts/b4_bloqueo.sh" "$fase" "$VENTANA"
+    CODIGO_LANZAMIENTO=$?
     T0=$(date +%s)
-    sleep 12   # que le de tiempo a armar el rescate y aplicar
+    if [[ $CODIGO_LANZAMIENTO -eq 124 ]]; then
+        dato "el lanzador no volvio en 20s; sigo, y lo confirmo por el sello"
+    else
+        dato "lanzado $UNIDAD (codigo $CODIGO_LANZAMIENTO)"
+    fi
+
+    # Confirmar que el bloqueo esta puesto. El sello lo escribe el propio script en
+    # disco, y leerlo exige una sesion SSH nueva... que es EXACTAMENTE lo que la
+    # fase 'ssh' corta. Preguntar por el sello ahi daria "nunca dejo su sello" y
+    # el arnes se saltaria la unica fase que importa de verdad, dando por no
+    # ejecutado el bloqueo que si ocurrio. La confirmacion se aplaza al final,
+    # cuando el rescate ya ha devuelto el acceso.
+    if [[ "$fase" == "ssh" ]]; then
+        dato "fase 'ssh': no se pregunta por el sello ahora (el canal para preguntarlo es"
+        dato "  el que se esta cortando). Se comprueba al final, con el log."
+        sleep 12
+    else
+        SELLO=""
+        for intento in 1 2 3 4 5 6 7 8 9 10; do
+            sleep 3
+            SELLO="$(salida_limitada 10 multipass exec "$VM" -- sudo cat "/var/log/b4/$fase.estado")"
+            [[ "$SELLO" == "bloqueando" || "$SELLO" == "recuperado" ]] && break
+        done
+        if [[ -z "$SELLO" ]]; then
+            fallo "fase '$fase': el bloqueo nunca dejo su sello. Nada que medir."
+            dato "  revisa: multipass exec $VM -- sudo systemctl status $UNIDAD"
+            dato "  y:      multipass exec $VM -- sudo cat /var/log/b4/$fase.log"
+            continue
+        fi
+        ok "fase '$fase': el bloqueo esta aplicado (sello='$SELLO')"
+    fi
 
     # --- la medicion, con el bloqueo puesto -------------------------------- #
     if sesion_nueva_funciona; then RESULTADO_SESION=0; else RESULTADO_SESION=1; fi
@@ -211,6 +279,46 @@ for fase in $FASES; do
         fi
     fi
 
+    # --- POR QUE se comporto asi: los contadores ---------------------------- #
+    # El bloque de contadores que imprime b4_bloqueo.sh sale a los milisegundos de
+    # aplicar, cuando todos estan a cero: dice que las reglas existen, no cual de
+    # ellas absorbio el trafico. La pregunta "¿por que responde la API?" solo se
+    # puede contestar DESPUES de haber hecho el curl, que es aqui.
+    CONTADORES="$(salida_limitada 15 multipass exec "$VM" -- \
+        sudo iptables -L FWDASH_INPUT -v -n -x --line-numbers)"
+    if [[ "$fase" == "ssh" ]]; then
+        dato "contadores: no se leen desde aqui (harian falta una sesion nueva, que es"
+        dato "  lo que esta cortado). Los toma el propio b4_bloqueo.sh a los 30s."
+    elif [[ -z "$CONTADORES" ]]; then
+        dato "contadores no legibles"
+    else
+        printf "%s\n" "$CONTADORES" | sed 's/^/      /'
+        PKTS_GUARDIAN="$(awk '/fwdash:guardian:management/{print $2}' <<< "$CONTADORES")"
+        PKTS_DROP="$(awk '/b4-auto-bloqueo/{print $2}' <<< "$CONTADORES")"
+        dato "paquetes: guardian de gestion=${PKTS_GUARDIAN:-?} · DROP de usuario=${PKTS_DROP:-?}"
+
+        # Aqui esta la prueba del MECANISMO, y es lo que distingue 'guardian' de
+        # 'cidr': las dos aplican la MISMA regla al MISMO puerto, y lo unico que
+        # cambia es cual de las dos lineas se come los paquetes.
+        case "$fase" in
+            guardian)
+                if [[ "${PKTS_GUARDIAN:-0}" -gt 0 ]]; then
+                    ok "fase 'guardian': el guardian de gestion absorbio $PKTS_GUARDIAN paquetes"
+                    ok "  => la API no responde 'a pesar' del DROP: responde PORQUE el guardian va antes"
+                else
+                    fallo "fase 'guardian': el guardian de gestion no conto ni un paquete"
+                    fallo "  la API respondio, pero no esta demostrado que sea por el guardian"
+                fi ;;
+            cidr)
+                if [[ "${PKTS_DROP:-0}" -gt 0 ]]; then
+                    ok "fase 'cidr': el DROP absorbio $PKTS_DROP paquetes (guardian: ${PKTS_GUARDIAN:-0})"
+                    ok "  => con el CIDR equivocado, el guardian deja pasar de largo. ADR-0016, medido"
+                else
+                    fallo "fase 'cidr': el DROP no conto paquetes: la API cayo por otro motivo"
+                fi ;;
+        esac
+    fi
+
     # --- esperar al rescate ------------------------------------------------ #
     RESTAN=$(( VENTANA - ($(date +%s) - T0) + 15 ))
     (( RESTAN > 0 )) || RESTAN=5
@@ -227,22 +335,51 @@ for fase in $FASES; do
         exit 1
     fi
 
-    SELLO="$(multipass exec "$VM" -- sudo cat "/var/log/b4/$fase.estado" </dev/null 2>/dev/null)"
+    SELLO="$(salida_limitada 15 multipass exec "$VM" -- sudo cat "/var/log/b4/$fase.estado")"
     if [[ "$SELLO" == "recuperado" ]]; then
         ok "fase '$fase': el rescate dejo su sello en disco ('recuperado')"
     else
         fallo "fase '$fase': el sello dice '${SELLO:-nada}': la recuperacion no fue la programada"
     fi
 
-    REGLAS="$(multipass exec "$VM" -- sudo iptables -S </dev/null 2>/dev/null | grep -c '^-A FWDASH')"
-    if [[ "$REGLAS" == "0" ]]; then
+    FINAL_IPT="$(salida_limitada 15 multipass exec "$VM" -- sudo iptables -S)"
+    if [[ -z "$FINAL_IPT" ]]; then
+        fallo "fase '$fase': iptables no respondio al terminar la fase"
+    fi
+    REGLAS="$(grep -c '^-A FWDASH' <<< "$FINAL_IPT")"
+    if [[ -n "$FINAL_IPT" && "$REGLAS" == "0" ]]; then
         ok "fase '$fase': no queda ninguna regla FWDASH_* en el sistema"
     else
         fallo "fase '$fase': quedan $REGLAS reglas FWDASH_* sin limpiar"
     fi
 
+    LOG_VM="$(salida_limitada 20 multipass exec "$VM" -- sudo cat "/var/log/b4/$fase.log")"
+
+    # La otra mitad de la fase 'ssh', y la que decide el procedimiento del RUNBOOK:
+    # una sesion NUEVA no entra, pero ¿sobrevive la que ya estaba abierta? Lo midio
+    # el script desde dentro, mientras el bloqueo estaba puesto.
+    if [[ "$fase" == "ssh" ]]; then
+        TARDIOS="$(grep -o 'CONTADORES_TARDIOS .*' <<< "$LOG_VM" | head -1)"
+        PKTS_DROP="$(sed -n 's/.*drop=\([0-9]*\).*/\1/p' <<< "$TARDIOS")"
+        if [[ "${PKTS_DROP:-0}" -gt 0 ]]; then
+            ok "fase 'ssh': el DROP del 22 absorbio $PKTS_DROP paquetes ($TARDIOS)"
+            ok "  => la sesion nueva no fallo por casualidad: murio en esa regla"
+        else
+            fallo "fase 'ssh': el DROP no conto paquetes; la sesion nueva fallo por otro motivo"
+        fi
+
+        VIVAS="$(awk -F'vivas ahora: ' '/conexiones al 22 vivas ahora/{print $2}' <<< "$LOG_VM" | head -1)"
+        if [[ "${VIVAS:-0}" -gt 0 ]]; then
+            ok "fase 'ssh': con el 22 cortado seguian VIVAS $VIVAS conexiones ya establecidas"
+            ok "  => 'ten una shell abierta antes de aplicar' deja de ser un consejo: es el procedimiento"
+        else
+            fallo "fase 'ssh': ninguna conexion establecida sobrevivio al bloqueo"
+            fallo "  el guardian de conntrack no esta haciendo lo que el RUNBOOK dice que hace"
+        fi
+    fi
+
     seccion "Lo que quedo escrito dentro de la VM (fase '$fase')"
-    multipass exec "$VM" -- sudo cat "/var/log/b4/$fase.log" </dev/null 2>/dev/null | sed 's/^/    /'
+    printf "%s\n" "$LOG_VM" | sed 's/^/    /'
 done
 
 # --------------------------------------------------------------------------- #

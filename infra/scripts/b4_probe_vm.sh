@@ -152,12 +152,25 @@ fi
 # --------------------------------------------------------------------------- #
 seccion "V5. Estado actual del firewall (para saber de que partimos)"
 
-for c in INPUT OUTPUT FORWARD; do
-    dato "politica $c: $(iptables -S "$c" 2>/dev/null | awk -v c="$c" '$1=="-P" && $2==c {print $3}')"
-done
-CADENAS_FWDASH="$(iptables -S 2>/dev/null | awk '$1=="-N" && $2 ~ /^FWDASH_/ {print $2}' | tr '\n' ' ')"
-dato "cadenas gestionadas presentes: ${CADENAS_FWDASH:-ninguna}"
-dato "reglas totales en filter: $(iptables -S 2>/dev/null | grep -c '^-A')"
+# Nada de `2>/dev/null` aqui: el 2026-09-04 esta seccion imprimio tres politicas
+# VACIAS porque iptables estaba devolviendo "Incompatible with this kernel", y
+# una politica vacia se lee como "no hay nada" cuando significa "no se pudo
+# mirar". Un arnes que silencia el error de su fuente de datos no esta midiendo.
+SALIDA_IPT="$(iptables -S 2>&1)"; CODIGO_IPT=$?
+if [[ $CODIGO_IPT -ne 0 ]]; then
+    mal "iptables NO responde (codigo $CODIGO_IPT): $(head -1 <<< "$SALIDA_IPT")"
+    mal "  todo lo que siga en esta seccion seria inventado. Diagnostico:"
+    mal "  sudo bash /opt/firewall-dashboard/infra/scripts/b4_diag_iptables.sh"
+else
+    ok "iptables responde ($(grep -c . <<< "$SALIDA_IPT") lineas de politica)"
+    for c in INPUT OUTPUT FORWARD; do
+        POLITICA="$(awk -v c="$c" '$1=="-P" && $2==c {print $3}' <<< "$SALIDA_IPT")"
+        dato "politica $c: ${POLITICA:-SIN DATO}"
+    done
+    CADENAS_FWDASH="$(awk '$1=="-N" && $2 ~ /^FWDASH_/ {print $2}' <<< "$SALIDA_IPT" | tr '\n' ' ')"
+    dato "cadenas gestionadas presentes: ${CADENAS_FWDASH:-ninguna}"
+    dato "reglas totales en filter: $(grep -c '^-A' <<< "$SALIDA_IPT")"
+fi
 
 # --------------------------------------------------------------------------- #
 seccion "V6. El CIDR de gestion, medido contra la red real"
