@@ -279,6 +279,26 @@ b4-verify: ## B4: provoca el auto-bloqueo en la VM y comprueba que se vuelve. FA
 b5-verify: ## B5: lanza la suite de contrato contra iptables real DENTRO de la VM
 	bash infra/scripts/b5_verify.sh
 
+# --------------------------------------------------------------------------- #
+# Bloque C — la interconexion
+#
+# `c-verify` es el bloque C entero de una pasada: red (C1), el cambio a iptables
+# real (C0), la reconciliacion de arranque (C2), el drift provocado a mano (C3) y
+# el recorrido completo de la API al kernel (C4). Pide confirmacion, arma la
+# reversion ANTES de conmutar y limpia lo que siembra.
+#
+# Necesita que la VM tenga EL MISMO commit que el Mac y que /opt este desplegado:
+#   git commit ... && make vm-sync && make vm-deploy && make c-verify
+# --------------------------------------------------------------------------- #
+
+.PHONY: c-verify
+c-verify: ## C: arnes del bloque C entero en la VM. FASE=todas|c0|c1|c2|c3|c4
+	bash infra/scripts/c_verify.sh $(FASE)
+
+.PHONY: c-front
+c-front: ## C1: apunta frontend/.env a la IP actual de la VM (sin tocar nada mas)
+	bash infra/scripts/c_verify.sh c1
+
 .PHONY: panic
 panic: ## Emergencia: elimina las cadenas FWDASH_* y restaura el acceso
 	@# `</dev/null` NO es adorno (leccion de B0): `multipass exec` reenvia stdin y
