@@ -7,7 +7,7 @@
 Proyecto de portfolio de ciberseguridad defensiva.
 
 ![estado](https://img.shields.io/badge/estado-en%20desarrollo-orange)
-![fase](https://img.shields.io/badge/fase-A0%20scaffolding-blue)
+![fase](https://img.shields.io/badge/fase-bloque%20C%20%C2%B7%20interconexi%C3%B3n-blue)
 ![python](https://img.shields.io/badge/python-3.11+-green)
 ![licencia](https://img.shields.io/badge/licencia-MIT-lightgrey)
 
@@ -152,7 +152,22 @@ make vm-sync        # llevar dentro lo commiteado (ADR-0013)
 make vm-deploy      # desplegar en /opt de la VM: venv, .env, DB (B1)
 make vm-b1          # comprobar los privilegios del servicio (B1)
 make recon          # capturar fixtures de iptables (SOLO LECTURA)
+
+# Bloque B — la capa de iptables real, medida
+make b4-verify      # provocar el auto-bloqueo con la reversion armada antes (B4)
+make b5-verify      # la suite de contrato contra iptables real (B5)
+
+# Bloque C — la interconexion, de una pasada
+make c-front        # apuntar frontend/.env a la IP que tenga la VM ahora (C1)
+make c-verify       # red, cambio a iptables real, arranque, drift y recorrido
+make c-verify FASE=c3   # una fase suelta: c0 | c1 | c2 | c3 | c4
 ```
+
+`make c-verify` **modifica configuración y reglas reales** de la VM: cambia
+`FIREWALL_BACKEND` a `iptables`, reinicia el servicio, provoca drift a mano y crea
+reglas por la API. Pide confirmación, arma la reversión **antes** de conmutar
+(`systemd-run` + `panic_reset.sh`) y limpia lo que siembra. Lo que mide, fase por
+fase, está en la cabecera del script.
 
 ### Comandos habituales
 
@@ -171,11 +186,26 @@ make panic          # emergencia: recuperar el acceso
 | Bloque | Contenido | Estado |
 |---|---|---|
 | **A** | Aplicación completa contra firewall en memoria | ✅ **cerrado** — núcleo, capa `firewall/`, auth, API de reglas y frontend |
-| **B** | Capa de iptables real, privilegios, runbook | ⬜ ← siguiente |
-| **C** | Interconexión, drift real, recorrido completo | ⬜ |
+| **B** | Capa de iptables real, privilegios, runbook | ✅ **cerrado** — runner con allowlist, `IptablesBackend`, capabilities, el auto-bloqueo **provocado y medido** (B4) y la suite de contrato contra iptables real (B5) |
+| **C** | Interconexión, drift real, recorrido completo | 🟡 **en curso** — código y arnés listos (`make c-verify`); cierra con las capturas y el tag `v0.1.0-mvp` |
 | Fase 2 | Logging de paquetes bloqueados, SQLite, rollback con confirmación | ⬜ |
 | Fase 3 | Dashboard con gráficas por IP / puerto / tiempo | ⬜ |
 | Fase 4 | Detección de patrones (X intentos en Y minutos), alertas | ⬜ |
+
+## Capturas
+
+Las cuatro que cuentan el proyecto —el dashboard, el aviso de drift, el preview de
+comandos y la misma regla vista con `iptables -S` dentro de la VM— se toman
+siguiendo [`docs/capturas/README.md`](docs/capturas/README.md), que dice qué tiene
+que salir en cada una y cómo reproducir el estado. Una vez estén los PNG en esa
+carpeta, se descomenta este bloque:
+
+<!--
+| | |
+|---|---|
+| ![Dashboard de reglas](docs/capturas/01-dashboard.png) | ![Aviso de drift](docs/capturas/02-drift.png) |
+| ![Preview de comandos](docs/capturas/03-preview.png) | ![La misma regla en iptables](docs/capturas/04-iptables.png) |
+-->
 
 ## Stack
 

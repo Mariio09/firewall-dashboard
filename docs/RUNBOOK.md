@@ -119,7 +119,13 @@ sudo bash /opt/firewall-dashboard/infra/scripts/panic_reset.sh
 #    'make b4-probe' antes de necesitarlo).
 multipass stop firewall-lab && multipass start firewall-lab
 
-# 3. Y en cuanto entres, ANTES de que el servicio reaplique la política:
+# 3. Y en cuanto entres, ANTES de que el servicio reaplique la política.
+#    Desde C2 esto es LITERAL: el servicio reconcilia la politica al arrancar
+#    (ADR-0018), asi que reiniciar la VM NO te libra de una politica que te deja
+#    fuera -- vuelve a aplicarse sola en cuanto systemd levanta el servicio.
+#    Tienes la ventana entre que arranca la VM y arranca el servicio; si la
+#    pierdes, repite el reinicio y ve mas rapido, o entra por 'multipass shell'
+#    con el servicio ya caido por el bloqueo.
 sudo systemctl disable --now firewall-dashboard
 
 # 4. Snapshot previo, si lo hiciste:
@@ -186,6 +192,7 @@ sudo bash /opt/firewall-dashboard/infra/scripts/b1_verify.sh
 | `Permission denied` al escribir la DB | `firewall.db` es de root: se migró como root en vez de como `fwdash` |
 | `sudo: a password is required` | `USE_SUDO=true` con la unidad instalada. `NoNewPrivileges=yes` anula el setuid de `sudo`: pon `USE_SUDO=false` (ADR-0003) |
 | el valor de una variable trae un comentario pegado | comentario al final de una línea en `/etc/firewall-dashboard/backend.env`: systemd se queda con la línea entera |
+| arranca pero el firewall esta vacio, y el journal dice `reconciliacion_de_arranque_fallida` | la aplicacion arranco y la reconciliacion de C2 fallo (ADR-0015 y ADR-0018): el motivo va en esa misma linea del log, y las reglas afectadas estan en `sync_state=failed` con su `last_error`. La aplicacion NO se cae por esto, a proposito: `/firewall/status` es lo que hay que mirar |
 | `iptables: Incompatible with this kernel.` | **la cadena no existe.** Medido en B4 con `iptables v1.8.10 (nf_tables)`: un `-L FWDASH_INPUT` sobre una cadena que no está devuelve ese mensaje, no `No chain/target/match by that name`. No es un problema de kernel ni de módulos: falta `ensure_scaffold()`. Compruébalo creándola (`sudo iptables -N FWDASH_INPUT`) y repitiendo el `-L` |
 
 Si falla por falta de `JWT_SECRET_KEY`, es intencionado: la aplicación se niega a
@@ -253,3 +260,8 @@ Una lista corta, toda ella salida de B4:
       entra multipass— no lo protege nadie. Compruébalo, no lo supongas:
       `sudo grep ^MANAGEMENT_SSH_PORT /etc/firewall-dashboard/backend.env`
 - [ ] `GET /firewall/preview` leído: enseña el argv exacto sin ejecutarlo.
+- [ ] `FIREWALL_BACKEND` sabido, no supuesto. Con `fake` no pasa nada de esto y con
+      `iptables` pasa todo: `sudo grep ^FIREWALL_BACKEND /etc/firewall-dashboard/backend.env`.
+      Y recuerda que desde C2 el servicio **aplica solo al arrancar** (ADR-0018): el
+      momento peligroso ya no es únicamente cuando pulsas *aplicar*, también es cada
+      `systemctl restart`.
