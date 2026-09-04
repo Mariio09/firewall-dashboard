@@ -243,8 +243,14 @@ recon-reset: ## Deshace en la VM lo que sembro `make recon`
 	multipass exec $(VM) -- sudo bash /tmp/recon_seed.sh reset
 
 .PHONY: test-vm
-test-vm: ## Tests que necesitan iptables real (ejecutar DENTRO de la VM)
-	cd $(BACKEND) && pytest -m requires_iptables
+test-vm: ## B5: las dos mitades de la suite (ejecutar DENTRO de la VM)
+	@# Primero la del Mac: si esta falla, lo que venga despues no se puede interpretar.
+	cd $(BACKEND) && .venv/bin/python -m pytest -q -p no:cacheprovider
+	@# Y la que necesita privilegios. `sudo` aqui y no en el servicio: la unidad
+	@# systemd usa CAP_NET_ADMIN (ADR-0003), pero una sesion interactiva no la tiene.
+	@# PYTHONDONTWRITEBYTECODE evita que root deje __pycache__ suyos en el clon.
+	cd $(BACKEND) && sudo env PYTHONDONTWRITEBYTECODE=1 \
+		.venv/bin/python -m pytest -m requires_iptables -v -p no:cacheprovider
 
 # --------------------------------------------------------------------------- #
 # Bloque B4 — el auto-bloqueo
@@ -264,6 +270,14 @@ vm-diag-iptables: ## Diagnostica por que iptables no responde dentro de la VM
 .PHONY: b4-verify
 b4-verify: ## B4: provoca el auto-bloqueo en la VM y comprueba que se vuelve. FASE=guardian|ssh|cidr|todas
 	bash infra/scripts/b4_verify.sh $(FASE)
+
+# --------------------------------------------------------------------------- #
+# Bloque B5 — el contrato contra iptables real
+# --------------------------------------------------------------------------- #
+
+.PHONY: b5-verify
+b5-verify: ## B5: lanza la suite de contrato contra iptables real DENTRO de la VM
+	bash infra/scripts/b5_verify.sh
 
 .PHONY: panic
 panic: ## Emergencia: elimina las cadenas FWDASH_* y restaura el acceso
