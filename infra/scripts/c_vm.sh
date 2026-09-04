@@ -149,9 +149,21 @@ RESC
 
 desarmar)
     UNIDAD="${2:?falta la unidad}"
-    systemctl stop "$UNIDAD.timer" 2>/dev/null
+    # `--no-block` no es adorno: `systemctl stop` espera a que el trabajo termine,
+    # y si systemd tiene la cola ocupada se queda ahi. El 2026-09-04 colgo el
+    # arnes entero hasta que salto el propio rescate que intentaba desarmar. Se
+    # encola la parada y se comprueba el EFECTO, que es lo unico que importaba.
+    systemctl stop --no-block "$UNIDAD.timer" 2>/dev/null
+    systemctl stop --no-block "$UNIDAD.service" 2>/dev/null
+
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        systemctl list-timers --all --no-legend 2>/dev/null | grep -q "$UNIDAD" || break
+        sleep 1
+    done
+
     if systemctl list-timers --all --no-legend 2>/dev/null | grep -q "$UNIDAD"; then
-        registrar "AVISO: el temporizador $UNIDAD SIGUE armado"
+        registrar "AVISO: el temporizador $UNIDAD SIGUE armado a los 10s"
+        systemctl list-timers --all --no-legend 2>/dev/null | grep "$UNIDAD" | sed 's/^/    /'
         exit 1
     fi
     registrar "rescate $UNIDAD desarmado y comprobado"

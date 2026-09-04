@@ -59,22 +59,40 @@ dato()    { printf "  %sDATO%s    %s\n" "$A" "$N" "$1"; }
 ok()      { printf "  %sOK%s      %s\n" "$V" "$N" "$1"; ACIERTOS=$((ACIERTOS+1)); }
 fallo()   { printf "  %sFALLO%s   %s\n" "$R" "$N" "$1"; FALLOS=$((FALLOS+1)); }
 
-en_vm()      { multipass exec "$VM" -- "$@" </dev/null; }
-en_vm_root() { multipass exec "$VM" -- sudo "$@" </dev/null; }
-cvm()        { multipass exec "$VM" -- sudo bash "$C_VM" "$@" </dev/null; }
-
-# macOS no trae `timeout`, y aqui hace falta: un servicio que no arranca deja el
-# curl esperando, y un arnes que se cuelga no informa de nada.
-con_limite() {
+# macOS no trae `timeout`, y aqui hace falta de verdad: NINGUNA llamada a la VM
+# puede colgarse en silencio. Paso el 2026-09-04 en la primera ejecucion real:
+# el `systemctl stop` del temporizador de rescate se quedo clavado y el arnes con
+# el, sin decir nada, hasta que salto el propio rescate. Un arnes colgado no
+# informa de nada, y encima deja el sistema a medio camino.
+#
+# `limitado` conserva las dos cosas que hacen falta —la salida y el codigo de
+# salida—, asi que sirve igual para `$(...)` que para un `if`. Sin subshell a
+# proposito: con `( ... ) &` el PID que se guarda es el del subshell y matarlo
+# dejaria vivo el `multipass exec` de debajo, que es justo el que hay que poder
+# matar (leccion de B4).
+limitado() {
     local limite="$1"; shift
-    "$@" >/tmp/c-limite.out 2>&1 & local pid=$!
-    local i=0
+    local tmp; tmp="$(mktemp "${TMPDIR:-/tmp}/c-lim.XXXXXX")"
+    "$@" >"$tmp" 2>&1 & local pid=$!
+    local vueltas=$(( limite * 5 )) i=0
     while kill -0 "$pid" 2>/dev/null; do
-        sleep 1; i=$((i+1))
-        if (( i >= limite )); then kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; return 124; fi
+        sleep 0.2; i=$((i+1))
+        if (( i >= vueltas )); then
+            kill -9 "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+            echo "TIEMPO AGOTADO tras ${limite}s: $*" >&2
+            cat "$tmp"; rm -f "$tmp"; return 124
+        fi
     done
-    wait "$pid"
+    wait "$pid"; local codigo=$?
+    cat "$tmp"; rm -f "$tmp"; return $codigo
 }
+
+LIMITE_VM="${LIMITE_VM:-45}"
+en_vm()      { limitado "$LIMITE_VM" multipass exec "$VM" -- "$@" </dev/null; }
+en_vm_root() { limitado "$LIMITE_VM" multipass exec "$VM" -- sudo "$@" </dev/null; }
+cvm()        { limitado "$LIMITE_VM" multipass exec "$VM" -- sudo bash "$C_VM" "$@" </dev/null; }
+
+con_limite() { limitado "$@" >/dev/null; }
 
 # --------------------------------------------------------------------------- #
 # Utilidades de JSON y de API
@@ -464,6 +482,13 @@ if [[ $CODIGO_CONMUTAR -ne 0 ]]; then
 fi
 ok "el .env dice iptables y el servicio ha vuelto a responder"
 
+# El .env ha podido cambiar mas cosas que el backend: `conmutar` añade
+# MANAGEMENT_SSH_PORT si faltaba. Sin releer, el DATO de mas abajo diria "no
+# declarado" tres lineas despues de enseñar su guardian puesto en la cadena.
+DATOS="$(cvm datos)"
+SSH_PORT="$(awk -F= '/^SSH_PORT=/{print $2}' <<< "$DATOS")"
+MGMT_PORT="$(awk -F= '/^MGMT_PORT=/{print $2}' <<< "$DATOS")"
+
 # 4. EL EFECTO, y no que el comando no fallara. Tres medidas independientes.
 if leer_estado; then
     BACKEND_VIVO="$(estado_campo "d['backend']")"
@@ -514,10 +539,14 @@ grep -q 'politica_reconciliada' <<< "$JOURNAL" \
 
 # 6. Desarmar: ya no hace falta la red, y dejarla armada reiniciaria el servicio
 #    a mitad de las fases siguientes.
-if cvm desarmar "$UNIDAD" >/dev/null; then
+SALIDA_DESARMAR="$(cvm desarmar "$UNIDAD")"; CODIGO_DESARMAR=$?
+if [[ $CODIGO_DESARMAR -eq 0 ]]; then
     ok "reversion desarmada (comprobado en list-timers)"
 else
-    fallo "la reversion NO se pudo desarmar: se disparara sola. Para y mira."
+    fallo "la reversion NO se pudo desarmar. Se disparara sola y dejara la VM como estaba:"
+    sed 's/^/            /' <<< "$SALIDA_DESARMAR"
+    echo "  A mano:  multipass exec $VM -- sudo systemctl stop $UNIDAD.timer" >&2
+    exit 1
 fi
 
 FOTO_C0="$(en_vm_root iptables -S 2>&1)"
