@@ -69,6 +69,10 @@ class FakeFirewallBackend:
         self._management_cidr = management_cidr
         self._management_ssh_port = management_ssh_port
         self._chains: dict[Chain, list[RuleSpec]] = {}
+        # Cadenas sobre las que YA se ha aplicado un ruleset. No es lo mismo que
+        # existir: una cadena recien creada existe y esta VACIA. Distinguirlo es
+        # lo que arreglo B5 -> ver `read_ruleset`.
+        self._aplicadas: set[Chain] = set()
         self._counters: dict[str, Counters] = {}
         self._scaffolded = False
 
@@ -104,7 +108,12 @@ class FakeFirewallBackend:
     # ----------------------------------------------------------------------- #
 
     def ensure_scaffold(self) -> None:
-        """Crea las cadenas gestionadas. Idempotente: no borra lo que ya hubiera."""
+        """Crea las cadenas gestionadas, VACIAS. Idempotente: no borra lo que hubiera.
+
+        No escribe guardianes, porque el backend real tampoco: `ensure_scaffold`
+        hace `-N` y el salto, y nada mas. Los guardianes los emite el renderer en
+        cabecera de cada ruleset, o sea en el primer `apply_ruleset`.
+        """
         for chain in Chain:
             self._chains.setdefault(chain, [])
         self._scaffolded = True
@@ -128,6 +137,7 @@ class FakeFirewallBackend:
 
         if not dry_run:
             self._chains[chain] = list(specs)
+            self._aplicadas.add(chain)
 
         return ApplyResult(
             chain=chain,
@@ -144,8 +154,19 @@ class FakeFirewallBackend:
         trabajo y es justo lo que hace util al fake: lo que sale de aqui ha
         pasado por el mismo camino que lo que saldra de la VM, guardianes
         incluidos.
+
+        UNA CADENA CREADA Y NUNCA APLICADA ESTA VACIA (hallazgo de B5). Antes,
+        este metodo renderizaba el ruleset completo -- con guardianes -- en cuanto
+        la cadena existia, y eso NO es lo que hace iptables: `ensure_scaffold`
+        crea la cadena y el salto, punto; los guardianes entran con el primer
+        `apply_ruleset`. El fake enseñaba tres reglas donde la VM tenia cero, y la
+        mentira vivia justo en la ventana entre el arranque del servicio y la
+        primera aplicacion. Lo cazo `tests/contract/`, que es literalmente para
+        lo que se escribio.
         """
         nombre = self._exigir_cadena(chain)
+        if chain not in self._aplicadas:
+            return []
         lineas = [
             shlex.join(comando[1:])
             for comando in self._comandos(chain, self._chains[chain])
@@ -164,6 +185,7 @@ class FakeFirewallBackend:
 
     def teardown(self) -> None:
         """Deja el backend como recien construido."""
+        self._aplicadas.clear()
         self._chains.clear()
         self._counters.clear()
         self._scaffolded = False

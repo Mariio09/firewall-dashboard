@@ -22,11 +22,23 @@ PASSWORD = "una-contrasena-de-bootstrap"
 
 
 def _settings(**cambios: object) -> Settings:
+    """Configuracion de prueba que NO lee el `.env` de la maquina.
+
+    `_env_file=None` no es cosmetico: sin el, estos tests pasaban en el Mac —donde
+    `backend/.env` existe y trae `MANAGEMENT_ALLOWED_CIDR`— y fallaban dentro de la
+    VM, donde el clon no tiene `.env`: con `app_env="vm"` saltaba el validador del
+    ADR-0016 y el test recibia un `ValidationError` en vez del `RuntimeError` que
+    esperaba. Es la trampa de A4 otra vez, y por eso el CIDR va explicito: un test
+    que depende de un archivo que ni siquiera esta en el repositorio no prueba lo
+    que dice probar.
+    """
     base: dict[str, object] = {
+        "_env_file": None,
         "app_env": "dev",
         "database_url": "sqlite://",
         "jwt_secret_key": "clave-de-prueba-no-usar-fuera-de-los-tests",
         "firewall_backend": "fake",
+        "management_allowed_cidr": "192.168.64.0/24",
         "bootstrap_admin_username": "admin",
         "bootstrap_admin_password": PASSWORD,
     }

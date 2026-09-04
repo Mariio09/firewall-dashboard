@@ -92,7 +92,7 @@ def test_el_preview_no_ejecuta_nada(
     assert cuerpo["applied_at"] is None
     assert any("203.0.113.9/32" in comando for comando in _comandos(cuerpo, "INPUT"))
 
-    # Y el firewall sigue sin la regla: solo estan los guardianes.
+    # Y el firewall sigue sin la regla: la cadena esta como la dejo el scaffold.
     estado = cliente_sin_auto_apply.get(f"{FIREWALL}/status", headers=auth_headers).json()
     assert _drift(estado, "INPUT")["managed"] == 0
 

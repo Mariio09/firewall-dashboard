@@ -30,8 +30,18 @@ class FirewallBackend(Protocol):
     def ensure_scaffold(self) -> None:
         """Crea las cadenas FWDASH_* y los saltos desde INPUT/OUTPUT/FORWARD.
 
-        Idempotente: si ya existen, no hace nada. Es lo primero que se ejecuta al
-        arrancar la aplicacion.
+        Idempotente: si ya existen, no hace nada -- y en particular NO vacia lo
+        que hubiera dentro. Es lo primero que se ejecuta al arrancar la
+        aplicacion, y un arranque que borrara la politica aplicada dejaria la
+        maquina sin ella hasta el siguiente apply.
+
+        LA CADENA QUEDA VACIA. Los guardianes no los escribe esto: los emite el
+        renderer en cabecera de cada ruleset, o sea que entran con el primer
+        `apply_ruleset`. Parece un detalle y no lo es -- entre el arranque del
+        servicio y la primera aplicacion, `read_ruleset` devuelve una lista
+        vacia--, asi que esta frase es parte del contrato y hay un test de
+        `tests/contract/` que la sostiene contra los dos backends. El fake decia
+        lo contrario hasta B5.
         """
         ...
 

@@ -34,16 +34,27 @@ def _peticion(app: FastAPI) -> Request:
 
 
 def test_el_lifespan_deja_el_firewall_listo(client: TestClient, api_app: FastAPI) -> None:
-    """Al arrancar, las cadenas gestionadas ya existen.
+    """Al arrancar, las cadenas gestionadas ya EXISTEN. Vacias, pero existen.
 
     Se comprueba leyendo: el fake imita a iptables tambien en el fallo, y leer
-    una cadena inexistente lanzaria `FirewallCommandError`.
+    una cadena inexistente lanzaria `FirewallCommandError`. Que no lance es la
+    prueba de que el scaffold se hizo.
+
+    Lo que este test NO puede afirmar es que ya haya guardianes: `ensure_scaffold`
+    crea la cadena y el salto, y los guardianes entran con el primer
+    `apply_ruleset`. Antes decia `!= []` y pasaba solo porque el fake mentia
+    -> lo destapo la suite de contrato de B5 contra iptables real.
     """
     assert client.get("/api/v1/health").status_code == 200
 
     firewall: Any = api_app.state.firewall
     assert firewall is not None
-    assert firewall.read_ruleset(Chain.INPUT) != []  # los guardianes ya estan
+    assert firewall.read_ruleset(Chain.INPUT) == []
+
+    # Y la contraprueba de que "vacia" significa vacia y no "no existe": una
+    # cadena que no existe lanza, y esta no lanza.
+    firewall.apply_ruleset(Chain.INPUT, [])
+    assert [r for r in firewall.read_ruleset(Chain.INPUT) if r.is_guardian] != []
 
 
 def test_todas_las_peticiones_comparten_el_mismo_backend(settings: Settings) -> None:
@@ -151,6 +162,7 @@ def test_el_puerto_de_rescate_del_env_acaba_en_la_regla_guardian(settings: Setti
     """
     firewall = build_firewall_backend(settings.model_copy(update={"management_ssh_port": 2222}))
     firewall.ensure_scaffold()
+    firewall.apply_ruleset(Chain.INPUT, [])  # los guardianes entran con el apply
 
     guardianes = [r for r in firewall.read_ruleset(Chain.INPUT) if r.is_guardian]
     rescate = [r for r in guardianes if r.comment == "fwdash:guardian:ssh"]
@@ -169,6 +181,7 @@ def test_sin_declararlo_no_hay_guardian_de_rescate(settings: Settings) -> None:
 
     firewall = build_firewall_backend(settings)
     firewall.ensure_scaffold()
+    firewall.apply_ruleset(Chain.INPUT, [])
 
     etiquetas = [r.comment for r in firewall.read_ruleset(Chain.INPUT)]
     assert "fwdash:guardian:ssh" not in etiquetas

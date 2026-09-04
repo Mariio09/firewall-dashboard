@@ -71,22 +71,54 @@ def test_sin_scaffold_ninguna_operacion_funciona(firewall: FirewallBackend) -> N
             operacion()
 
 
-def test_ensure_scaffold_es_idempotente(firewall: FirewallBackend) -> None:
-    """Llamarlo dos veces deja UNA cadena con sus guardianes, no dos juegos.
+def test_ensure_scaffold_crea_la_cadena_VACIA(firewall: FirewallBackend) -> None:
+    """Crear una cadena no es poblarla, y la diferencia la encontro B5.
 
-    Es el arranque del servicio: `lifespan` lo ejecuta en cada reinicio. Un
-    scaffold que acumulara duplicaria los guardianes en cada `systemctl restart`.
+    `ensure_scaffold` hace la cadena y el salto, punto. Los guardianes los emite
+    el renderer en cabecera de cada ruleset, o sea que entran con el primer
+    `apply_ruleset`. El fake enseñaba tres reglas donde iptables tenia una cadena
+    vacia, y la mentira vivia exactamente en la ventana entre el arranque del
+    servicio y la primera aplicacion: `GET /firewall/status` habria dicho cosas
+    distintas en el Mac y en la VM.
     """
     firewall.ensure_scaffold()
-    despues_de_una = estado(firewall)
 
+    for chain in GUARDIANES_POR_CADENA:
+        assert firewall.read_ruleset(chain) == []
+
+
+def test_los_guardianes_entran_con_el_primer_apply(firewall: FirewallBackend) -> None:
+    """La otra mitad del test anterior: la cadena vacia no se queda vacia.
+
+    Sin esta, aquel pasaria igual si `read_ruleset` devolviera siempre una lista
+    vacia, que es la forma mas barata de tener un test verde que no prueba nada.
+    """
     firewall.ensure_scaffold()
 
-    assert estado(firewall) == despues_de_una
     for chain, cuantos in GUARDIANES_POR_CADENA.items():
+        firewall.apply_ruleset(chain, [])
         reglas = firewall.read_ruleset(chain)
         assert len(guardianes(reglas)) == cuantos
         assert de_usuario(reglas) == []
+
+
+def test_ensure_scaffold_es_idempotente_y_no_borra_lo_aplicado(
+    firewall: FirewallBackend,
+) -> None:
+    """`lifespan` lo llama en CADA arranque del servicio.
+
+    Dos cosas que no puede hacer, y las dos se comprueban por efecto: duplicar el
+    montaje, y llevarse por delante la politica que ya estaba aplicada. La segunda
+    es la peligrosa: un `systemctl restart` que vaciara las cadenas dejaria la
+    maquina sin la politica de la base de datos hasta el siguiente apply manual.
+    """
+    firewall.ensure_scaffold()
+    firewall.apply_ruleset(CADENA, specs_de_prueba(CADENA))
+    antes = estado(firewall)
+
+    firewall.ensure_scaffold()
+
+    assert estado(firewall) == antes
 
 
 def test_teardown_deja_el_sistema_como_estaba_y_se_puede_repetir(

@@ -2,9 +2,13 @@
 
 Lo que se comprueba aqui no es "el fake guarda cosas en un diccionario", sino que
 se comporta como el contrato dice que se comporta un firewall: reconstruccion
-completa en vez de append, fallo cuando la cadena no existe, y guardianes que
-aparecen siempre. Si el fake miente, el bloque C deja de ser un cambio de variable
-de entorno y se convierte en una reescritura.
+completa en vez de append, fallo cuando la cadena no existe, y guardianes en
+cabecera de cada ruleset aplicado. Si el fake miente, el bloque C deja de ser un
+cambio de variable de entorno y se convierte en una reescritura.
+
+Y mintio una vez: hasta B5, `read_ruleset` devolvia los guardianes en cuanto la
+cadena existia, aunque no se hubiera aplicado nada. iptables devuelve una cadena
+vacia. Lo cazo `tests/contract/` contra la VM.
 """
 
 from __future__ import annotations
@@ -53,6 +57,19 @@ def test_ensure_scaffold_es_idempotente() -> None:
     fake.apply_ruleset(Chain.INPUT, [regla("1.2.3.4")])
     fake.ensure_scaffold()
     assert len([r for r in fake.read_ruleset(Chain.INPUT) if r.spec is not None]) == 1
+
+
+def test_una_cadena_creada_y_nunca_aplicada_esta_vacia() -> None:
+    """Como iptables: `-N` crea la cadena y no mete nada dentro (B5).
+
+    La contraprueba va pegada, porque "esta vacia" pasaria igual si `read_ruleset`
+    no devolviera nunca nada.
+    """
+    fake = backend_listo()
+    assert fake.read_ruleset(Chain.INPUT) == []
+
+    fake.apply_ruleset(Chain.INPUT, [])
+    assert [r.comment for r in fake.read_ruleset(Chain.INPUT)] != []
 
 
 def test_aplicar_reconstruye_la_cadena_entera() -> None:
