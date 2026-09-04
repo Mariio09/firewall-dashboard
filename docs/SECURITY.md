@@ -151,8 +151,11 @@ desarrollo y B como el modo correcto. El razonamiento completo está en
 
 ## 6. Exposición de red
 
-- El backend hace bind a la interfaz de Multipass (`192.168.64.0/24`), que es
-  host-only: no está expuesta a la LAN ni a internet.
+- El backend hace bind a la interfaz de Multipass, que es host-only: no está
+  expuesta a la LAN ni a internet. **Ese rango no es fijo** — en esta máquina es
+  `192.168.252.0/24` y no el `192.168.64.0/24` que esta página daba por hecho
+  hasta B4 — así que se consulta y no se supone; es el mismo valor que alimenta
+  la regla guardián del puerto de gestión ([ADR-0016](adr/0016-el-cidr-de-gestion-se-declara-no-se-supone.md)).
 - CORS restringido al origen del frontend, sin comodines.
 - Alternativa más estricta: bind a `127.0.0.1` y túnel
   `ssh -L 8000:localhost:8000`.
@@ -169,10 +172,22 @@ error de configuración corta el acceso a la herramienta que lo arreglaría.
    nunca vuelve, y parece un timeout genérico.
 2. **Dry-run** (`GET /firewall/preview`) devuelve los comandos exactos sin
    ejecutarlos.
-3. **Vía de escape fuera de banda**: `multipass shell firewall-lab` no usa TCP, así
-   que sigue funcionando aunque se cierre la red entera. Ver `docs/RUNBOOK.md`.
-4. **Fase 2**: apply con rollback automático si no llega confirmación en N
-   segundos (patrón `iptables-apply`).
+3. **Guardián del canal de rescate**, y solo si se declara
+   ([ADR-0017](adr/0017-el-canal-de-rescate-se-protege-si-se-declara.md)):
+   `MANAGEMENT_SSH_PORT` añade un cuarto guardián atado al mismo
+   `MANAGEMENT_ALLOWED_CIDR`. Sin declararlo, el 22 se filtra como cualquier otro
+   puerto. Un agujero declarado es una decisión; uno fijo es un defecto.
+4. **La vía de escape NO es fuera de banda.** Esta página afirmó lo contrario
+   hasta B4, y era falso: `multipass shell` entra por SSH (`bash ← sudo ← sshd`),
+   así que una regla que cierre el 22 corta también la vía de rescate. Lo que sí
+   sobrevive es una **sesión ya abierta**, que mantiene viva el guardián de
+   conntrack, y el reinicio de la VM, porque iptables no persiste. Ver
+   `docs/RUNBOOK.md`, emergencia 2-bis.
+5. **Reversión armada antes de aplicar**, no después: `systemd-run --on-active=N`
+   con `panic_reset.sh`. Es el patrón de `iptables-apply` y es lo que ejercitan
+   `make b4-verify` y la fase C0 de `make c-verify`.
+6. **Fase 2**: llevar ese rollback al propio `POST /firewall/apply`, con
+   confirmación del cliente.
 
 ## 8. Cadena de suministro
 
@@ -202,6 +217,15 @@ producto terminado.
 - **El drift se detecta, no se previene.** Alguien con acceso a la VM puede
   modificar `iptables` a mano; la aplicación lo señalará en el siguiente sondeo,
   pero no lo impide.
+- **La política se reaplica sola al arrancar el servicio**
+  ([ADR-0018](adr/0018-la-politica-se-reconcilia-al-arrancar.md)). Es lo que hace
+  que un reinicio no pierda el firewall, y también significa que una política que
+  te deja fuera **vuelve a aplicarse en cada arranque**: reiniciar la VM no basta
+  para escapar de ella. La salida está en el runbook (emergencia 2-bis), y es
+  `systemctl disable --now firewall-dashboard` en cuanto se recupera el acceso.
+- **El drift se detecta cuando alguien pregunta.** No hay sondeo en segundo plano:
+  `GET /firewall/status` es quien compara. Con el dashboard cerrado, una
+  divergencia puede vivir horas sin que nadie la vea.
 
 ---
 
