@@ -125,6 +125,31 @@ def test_el_default_que_provocaba_el_auto_bloqueo_ya_no_existe() -> None:
     assert "192.168.64.0/24" not in str(campo)
 
 
+def test_el_puerto_de_rescate_no_tiene_default() -> None:
+    """ADR-0017: un firewall no trae agujeros fijos que nadie ha pedido.
+
+    Es el mismo criterio del ADR-0016 aplicado al otro puerto que puede dejarte
+    fuera. La diferencia con el CIDR de gestion es que este NO es obligatorio: no
+    declararlo significa "filtra el 22 como cualquier otro puerto", que es una
+    postura defendible; lo que no es defendible es abrirlo sin que nadie lo pida.
+    """
+    campo = Settings.model_fields["management_ssh_port"]
+    assert campo.default is None
+    assert Settings(_env_file=None).management_ssh_port is None
+
+
+@pytest.mark.parametrize("puerto", [0, 65536, -1])
+def test_un_puerto_de_rescate_invalido_no_llega_al_argv(puerto: int) -> None:
+    """La regla que protege el acceso es de las que no se pueden permitir estar mal."""
+    with pytest.raises(PydanticValidationError):
+        Settings(_env_file=None, management_ssh_port=puerto)
+
+
+def test_el_puerto_de_rescate_se_acepta_declarado() -> None:
+    """Contraprueba: el test de arriba pasaria igual si el campo no existiera."""
+    assert Settings(_env_file=None, management_ssh_port=22).management_ssh_port == 22
+
+
 def test_get_settings_esta_cacheado() -> None:
     """Leer y validar el `.env` en cada peticion no aporta nada."""
     assert get_settings() is get_settings()

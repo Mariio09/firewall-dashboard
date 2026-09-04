@@ -79,6 +79,14 @@ propongo integrar en la arquitectura desde el principio, no como parche:
    | `FWDASH_OUTPUT` | `ACCEPT` de `ESTABLISHED,RELATED`; `ACCEPT` en `lo`; `ACCEPT` desde el puerto de gestión hacia `MANAGEMENT_ALLOWED_CIDR` |
    | `FWDASH_FORWARD` | `ACCEPT` de `ESTABLISHED,RELATED` |
 
+   Y uno más, **opcional y sin valor por defecto** (ADR-0017): si se declara
+   `MANAGEMENT_SSH_PORT`, `INPUT` y `OUTPUT` reciben un cuarto guardián que abre ese puerto
+   desde `MANAGEMENT_ALLOWED_CIDR`. Existe porque B4 midió que el acceso a esta VM **no es
+   fuera de banda** —`multipass` entra por SSH—, así que un `DROP tcp --dport 22` de usuario
+   se aplica sin queja y corta la única vía de rescate. Si no se declara, el 22 se filtra
+   como cualquier otro puerto: el agujero, cuando existe, lo pide el operador y se ve en el
+   `preview` y en `iptables -S` con la etiqueta `fwdash:guardian:ssh`.
+
    Los guardianes de `OUTPUT` importan más de lo que parece: sin el `ESTABLISHED,RELATED`
    de salida, una regla de usuario que filtre tráfico saliente corta las **respuestas** de
    la propia API y te quedas sin dashboard aunque la petición sí haya entrado. Es el modo
@@ -738,11 +746,20 @@ telemetría de la app.
 tests/unit/          rápidos, sin I/O.       Objetivo: >90% en firewall/ y services/
 tests/integration/   TestClient + SQLite temporal + FakeBackend
 tests/contract/      misma suite parametrizada por backend (fake | iptables) — §8
-tests/e2e_vm/        marker requires_iptables, skip por defecto
+tests/e2e_vm/        marker requires_iptables: deseleccionados, nunca `skip`
 ```
 
-En `pyproject.toml`: `addopts = "-m 'not requires_iptables' --cov=app"`. Así `pytest` a
-secas funciona en tu Mac, y en la VM lanzas `pytest -m requires_iptables`.
+En `pyproject.toml`: `addopts = "-m 'not requires_iptables' --strict-markers"`. Así `pytest`
+a secas funciona en tu Mac, y en la VM se lanzan las dos mitades con `make test-vm`.
+
+El backend de la suite de contrato se elige con `pytest_generate_tests` + `indirect`, y el
+parámetro `iptables` lleva el marcador. La forma importa: toda la suite depende de que ese
+marcador se aplique de verdad, y si no lo hiciera, la mitad real correría también en el Mac
+—donde no hay iptables— y saldría roja por el motivo equivocado.
+
+Deseleccionar no es saltar. Quien decide *dónde* corren esos tests es el marcador; una vez
+dentro de la VM, si iptables no responde la suite es **roja**. Un `skip` ahí diría "todo
+bien" con el firewall muerto, que es justo el fallo que esa suite existe para detectar.
 
 Fixtures clave en `conftest.py`: `db_session` (SQLite en memoria, rollback por test),
 `fake_firewall`, `client` (con `dependency_overrides` para inyectar ambos),

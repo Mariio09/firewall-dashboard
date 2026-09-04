@@ -248,6 +248,8 @@ Una lista corta, toda ella salida de B4:
 - [ ] `sudo iptables-save > ~/iptables-backup-$(date +%Y%m%d-%H%M%S).rules` en la VM.
 - [ ] `MANAGEMENT_ALLOWED_CIDR` **consultado, no supuesto**:
       `multipass exec firewall-lab -- ip -4 -o addr show scope global` (ADR-0016).
-- [ ] Saber que el guardián protege el puerto de gestión **y solo ese**: el 22, por
-      donde entra multipass, no lo protege nadie.
+- [ ] `MANAGEMENT_SSH_PORT` declarado en el `.env` de la VM (ADR-0017), o saber que el
+      guardián protege el puerto de gestión **y solo ese**: sin declararlo, el 22 —por donde
+      entra multipass— no lo protege nadie. Compruébalo, no lo supongas:
+      `sudo grep ^MANAGEMENT_SSH_PORT /etc/firewall-dashboard/backend.env`
 - [ ] `GET /firewall/preview` leído: enseña el argv exacto sin ejecutarlo.

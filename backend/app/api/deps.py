@@ -112,6 +112,7 @@ def build_firewall_backend(settings: Settings) -> FirewallBackend:
             chain_prefix=settings.managed_chain_prefix,
             management_port=settings.management_port,
             management_cidr=str(settings.management_allowed_cidr),
+            management_ssh_port=settings.management_ssh_port,
         )
 
     from app.firewall.iptables import IptablesBackend
@@ -123,6 +124,7 @@ def build_firewall_backend(settings: Settings) -> FirewallBackend:
         table=settings.iptables_table,
         management_port=settings.management_port,
         management_cidr=str(settings.management_allowed_cidr),
+        management_ssh_port=settings.management_ssh_port,
         timeout=settings.command_timeout_seconds,
     )
 

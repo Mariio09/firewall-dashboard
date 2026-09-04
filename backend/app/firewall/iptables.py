@@ -92,6 +92,9 @@ class IptablesBackend:
         # CIDR de gestion que parece bueno y no lo es escribe la regla guardian
         # que te bloquea, asi que aqui tampoco se deja uno que engañe.
         management_cidr: str = "127.0.0.0/8",
+        # Opcional y sin default (ADR-0017): protege el canal de rescate SOLO si
+        # se declara. `None` = el 22 se filtra como cualquier otro puerto.
+        management_ssh_port: int | None = None,
         timeout: float = DEFAULT_TIMEOUT_SECONDS,
     ) -> None:
         if table != Table.FILTER.value:
@@ -106,6 +109,7 @@ class IptablesBackend:
         self._table = table
         self._management_port = management_port
         self._management_cidr = management_cidr
+        self._management_ssh_port = management_ssh_port
         self._timeout = timeout
 
     # ----------------------------------------------------------------------- #
@@ -170,6 +174,7 @@ class IptablesBackend:
             specs,
             management_port=self._management_port,
             management_cidr=self._management_cidr,
+            management_ssh_port=self._management_ssh_port,
         )
 
     # ----------------------------------------------------------------------- #

@@ -203,3 +203,136 @@ def test_el_ruleset_no_cierra_la_cadena() -> None:
     )
     assert all(c[-1] != "RETURN" for c in comandos)
     assert len(comandos) == 4
+
+
+# --------------------------------------------------------------------------- #
+# El guardian del canal de rescate (ADR-0017)
+# --------------------------------------------------------------------------- #
+
+#: Puerto SSH de la VM. Se escribe como constante y no como `22` suelto para que
+#: los tests digan de que puerto hablan.
+PUERTO_SSH = 22
+
+
+def _etiquetas(comandos: list[list[str]]) -> list[str]:
+    """La etiqueta `--comment` de cada comando que la lleve."""
+    return [c[c.index("--comment") + 1] for c in comandos if "--comment" in c]
+
+
+@pytest.mark.parametrize(
+    ("chain", "sin_declarar", "declarado"),
+    [(Chain.INPUT, 3, 4), (Chain.OUTPUT, 3, 4), (Chain.FORWARD, 1, 1)],
+)
+def test_el_guardian_de_ssh_solo_existe_si_se_declara(
+    chain: Chain, sin_declarar: int, declarado: int
+) -> None:
+    """Sin `management_ssh_port` no hay agujero fijo; con el, hay proteccion.
+
+    Las dos mitades van juntas a proposito: comprobar solo la ausencia pasaria
+    igual si el guardian no se emitiera NUNCA, que es justo el bug que dejaria
+    esta opcion en decorativa.
+    """
+    nombre = f"FWDASH_{chain.value}"
+
+    ninguno = render_guard_rules(chain, nombre, management_port=8000, management_cidr=CIDR)
+    assert len(ninguno) == sin_declarar
+    assert "fwdash:guardian:ssh" not in _etiquetas(ninguno)
+
+    con_ssh = render_guard_rules(
+        chain, nombre, management_port=8000, management_cidr=CIDR, management_ssh_port=PUERTO_SSH
+    )
+    assert len(con_ssh) == declarado
+    # FORWARD no gana ninguno: por ahi no pasa el trafico dirigido a esta maquina,
+    # asi que no hay sesion de rescate que proteger.
+    assert ("fwdash:guardian:ssh" in _etiquetas(con_ssh)) is (chain is not Chain.FORWARD)
+
+
+def test_el_guardian_de_ssh_se_ata_al_cidr_de_gestion_y_no_al_mundo() -> None:
+    """Un ACCEPT del 22 desde `0.0.0.0/0` seria un agujero permanente escrito por
+    la propia aplicacion. El canal de rescate es el del administrador."""
+    entrada = render_guard_rules(
+        Chain.INPUT,
+        "FWDASH_INPUT",
+        management_port=8000,
+        management_cidr=CIDR,
+        management_ssh_port=PUERTO_SSH,
+    )[3]
+    salida = render_guard_rules(
+        Chain.OUTPUT,
+        "FWDASH_OUTPUT",
+        management_port=8000,
+        management_cidr=CIDR,
+        management_ssh_port=PUERTO_SSH,
+    )[3]
+
+    assert entrada == [
+        IPTABLES,
+        "-A",
+        "FWDASH_INPUT",
+        "-s",
+        CIDR,
+        "-p",
+        "tcp",
+        "--dport",
+        str(PUERTO_SSH),
+        "-m",
+        "comment",
+        "--comment",
+        "fwdash:guardian:ssh",
+        "-j",
+        "ACCEPT",
+    ]
+    assert salida[salida.index("-d") + 1] == CIDR
+    assert salida[salida.index("--sport") + 1] == str(PUERTO_SSH)
+
+
+def test_el_puerto_de_rescate_tambien_se_valida() -> None:
+    """Es una de las tres reglas que no se pueden permitir estar mal."""
+    for puerto in (0, 65536):
+        with pytest.raises(InvalidRuleError):
+            render_guard_rules(
+                Chain.INPUT,
+                "FWDASH_INPUT",
+                management_port=8000,
+                management_cidr=CIDR,
+                management_ssh_port=puerto,
+            )
+
+
+def test_una_regla_de_usuario_no_puede_tapar_el_guardian_de_ssh() -> None:
+    """El caso que abrio la decision: `DROP tcp --dport 22` desde la UI.
+
+    En iptables el orden ES la semantica, asi que la proteccion no consiste en
+    rechazar la regla, sino en que el ACCEPT del guardian se evalue ANTES. El
+    test lo comprueba por posicion, que es el efecto, y no por la presencia de la
+    etiqueta, que no dice nada sobre quien gana.
+    """
+    corta_el_rescate = RuleSpec(
+        chain=Chain.INPUT, action=Action.DROP, protocol=Protocol.TCP, dst_port=str(PUERTO_SSH)
+    )
+    comandos = render_ruleset(
+        Chain.INPUT,
+        "FWDASH_INPUT",
+        [corta_el_rescate],
+        management_port=8000,
+        management_cidr=CIDR,
+        management_ssh_port=PUERTO_SSH,
+    )
+    etiquetas = _etiquetas(comandos)
+    posicion_guardian = etiquetas.index("fwdash:guardian:ssh")
+    posicion_drop = etiquetas.index("fwdash:-")
+    assert posicion_guardian < posicion_drop
+
+    # La contraprueba: sin declarar el puerto, esa misma regla no encuentra
+    # ningun ACCEPT delante. Si este bloque tambien pasara, el test de arriba
+    # estaria comprobando el orden de una lista que da igual.
+    sin_guardian = _etiquetas(
+        render_ruleset(
+            Chain.INPUT,
+            "FWDASH_INPUT",
+            [corta_el_rescate],
+            management_port=8000,
+            management_cidr=CIDR,
+        )
+    )
+    assert "fwdash:guardian:ssh" not in sin_guardian

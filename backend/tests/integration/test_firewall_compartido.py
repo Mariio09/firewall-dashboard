@@ -135,3 +135,40 @@ def test_la_aplicacion_arranca_aunque_el_firewall_no_responda(settings: Settings
     with TestClient(app) as cliente:
         assert cliente.get("/api/v1/health").status_code == 200
     assert getattr(app.state, "firewall", None) is None
+
+
+# --------------------------------------------------------------------------- #
+# El canal de rescate llega desde `Settings` hasta el argv (ADR-0017)
+# --------------------------------------------------------------------------- #
+
+
+def test_el_puerto_de_rescate_del_env_acaba_en_la_regla_guardian(settings: Settings) -> None:
+    """Una variable que se acepta y no se usa es peor que una que no existe.
+
+    Se comprueba por EFECTO: se construye el backend desde `Settings` y se lee de
+    vuelta la cadena, en vez de mirar el atributo del objeto. El atributo diria
+    que el valor se guardo; esto dice que llego hasta la regla.
+    """
+    firewall = build_firewall_backend(settings.model_copy(update={"management_ssh_port": 2222}))
+    firewall.ensure_scaffold()
+
+    guardianes = [r for r in firewall.read_ruleset(Chain.INPUT) if r.is_guardian]
+    rescate = [r for r in guardianes if r.comment == "fwdash:guardian:ssh"]
+    assert len(rescate) == 1
+    assert "--dport 2222" in rescate[0].raw
+    assert str(settings.management_allowed_cidr) in rescate[0].raw
+
+
+def test_sin_declararlo_no_hay_guardian_de_rescate(settings: Settings) -> None:
+    """La contraprueba del test de arriba: el default no abre ningun puerto.
+
+    Sin esta mitad, aquel pasaria igual si el guardian se emitiera SIEMPRE, que es
+    justo el agujero fijo que el ADR-0017 descarta.
+    """
+    assert settings.management_ssh_port is None
+
+    firewall = build_firewall_backend(settings)
+    firewall.ensure_scaffold()
+
+    etiquetas = [r.comment for r in firewall.read_ruleset(Chain.INPUT)]
+    assert "fwdash:guardian:ssh" not in etiquetas

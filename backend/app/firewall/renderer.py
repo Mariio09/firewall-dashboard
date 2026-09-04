@@ -106,6 +106,7 @@ def render_guard_rules(
     *,
     management_port: int,
     management_cidr: str,
+    management_ssh_port: int | None = None,
 ) -> list[list[str]]:
     """Reglas guardian de una cadena. Ver la tabla de docs/ARCHITECTURE.md §0.
 
@@ -116,9 +117,29 @@ def render_guard_rules(
     `management_port` y `management_cidr` se validan aqui aunque vengan de la
     configuracion: un `.env` mal escrito no puede acabar en un argv, y estas son
     justo las reglas que no se pueden permitir estar mal.
+
+    EL GUARDIAN DEL CANAL DE RESCATE (ADR-0017, B4->B5)
+
+    `management_ssh_port` es OPCIONAL y no tiene valor por defecto, exactamente
+    por el mismo motivo que `management_cidr` (ADR-0016): lo que te puede dejar
+    fuera se declara, no se supone. B4 midio que el ancla de recuperacion de esta
+    VM no es fuera de banda -- `multipass` entra por SSH --, asi que una regla de
+    usuario `DROP tcp --dport 22` se aplica sin queja y se lleva por delante la
+    unica via de rescate. Si se declara, esa via queda protegida; si no se
+    declara, el firewall filtra el 22 como cualquier otro puerto y no hay ningun
+    agujero fijo que defender.
+
+    El guardian se ata al MISMO `management_cidr` que el de la API, no a
+    `0.0.0.0/0`: el canal de rescate es el del administrador. Un guardian de SSH
+    abierto al mundo seria un agujero permanente escrito por la propia aplicacion.
     """
     cidr = validators.validate_ip_or_cidr(management_cidr, campo="management_allowed_cidr")
     puerto = validators.validate_port_spec(str(management_port), campo="management_port")
+    ssh = (
+        None
+        if management_ssh_port is None
+        else validators.validate_port_spec(str(management_ssh_port), campo="management_ssh_port")
+    )
 
     def guardian(nombre: str, *selectores: str) -> list[str]:
         return [
@@ -142,17 +163,26 @@ def render_guard_rules(
         return [conntrack]
 
     if chain is Chain.INPUT:
-        return [
+        guardianes = [
             conntrack,
             guardian("loopback", "-i", "lo"),
             guardian("management", "-s", cidr, "-p", "tcp", "--dport", puerto),
         ]
+        if ssh is not None:
+            guardianes.append(guardian("ssh", "-s", cidr, "-p", "tcp", "--dport", ssh))
+        return guardianes
 
-    return [
+    guardianes = [
         conntrack,
         guardian("loopback", "-o", "lo"),
         guardian("management", "-d", cidr, "-p", "tcp", "--sport", puerto),
     ]
+    if ssh is not None:
+        # La respuesta a una sesion SSH ya establecida la cubre el guardian de
+        # conntrack. Este cubre el caso en el que conntrack no esta: mismo
+        # criterio que el guardian de gestion en OUTPUT, que existe por lo mismo.
+        guardianes.append(guardian("ssh", "-d", cidr, "-p", "tcp", "--sport", ssh))
+    return guardianes
 
 
 def render_ruleset(
@@ -162,6 +192,7 @@ def render_ruleset(
     *,
     management_port: int,
     management_cidr: str,
+    management_ssh_port: int | None = None,
 ) -> list[list[str]]:
     """Ruleset completo de una cadena: flush, guardianes y reglas de usuario en orden.
 
@@ -172,7 +203,11 @@ def render_ruleset(
     """
     comandos: list[list[str]] = [[IPTABLES, "-F", chain_name]]
     comandos += render_guard_rules(
-        chain, chain_name, management_port=management_port, management_cidr=management_cidr
+        chain,
+        chain_name,
+        management_port=management_port,
+        management_cidr=management_cidr,
+        management_ssh_port=management_ssh_port,
     )
     for spec in specs:
         if spec.chain is not chain:

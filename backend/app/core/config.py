@@ -90,6 +90,14 @@ class Settings(BaseSettings):
     # default plausible pero falso escribe la regla que te bloquea. Cuando las
     # reglas llegan a iptables de verdad, hay que declararlo. Ver el validador.
     management_allowed_cidr: IPvAnyNetwork | None = None
+    # TAMPOCO tiene default, y por el mismo motivo (ADR-0017). B4 midio que el
+    # ancla de recuperacion de la VM no es fuera de banda: `multipass` entra por
+    # SSH, y el guardian de gestion solo cubre MANAGEMENT_PORT, asi que hoy una
+    # regla `DROP tcp --dport 22` se aplica sin queja y corta la unica via de
+    # rescate. Declararlo protege ese puerto desde MANAGEMENT_ALLOWED_CIDR; no
+    # declararlo deja que el firewall filtre el 22 como cualquier otro. Lo que no
+    # hay es un agujero fijo que nadie pidio.
+    management_ssh_port: int | None = Field(default=None, ge=1, le=65535)
 
     # ----------------------------------------------------------------------- #
     # Derivados
