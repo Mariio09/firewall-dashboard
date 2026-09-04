@@ -67,9 +67,16 @@ esperar_health() {
     local limite="${1:-45}" i=0 url
     url="$(base_api)/health"
     while (( i < limite )); do
-        curl -fsS -o /dev/null --max-time 3 "$url" && return 0
+        # `-fs` SIN `-S` dentro del bucle: mientras el servicio arranca, que el
+        # curl falle es lo esperado, y sacar su mensaje en cada intento es ruido
+        # que enseña a ignorar errores -- justo lo contrario de lo que hace falta
+        # en un log que se lee cuando algo va mal. Si el bucle se AGOTA, ahi si
+        # se enseña el error entero: eso ya no es lo esperado.
+        curl -fs -o /dev/null --max-time 3 "$url" && return 0
         sleep 1; i=$((i+1))
     done
+    echo "    el servicio no respondio en ${limite}s. Ultimo intento contra $url:"
+    curl -fsS -o /dev/null --max-time 3 "$url"
     return 1
 }
 
