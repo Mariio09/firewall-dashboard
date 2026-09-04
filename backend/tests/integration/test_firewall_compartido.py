@@ -34,27 +34,34 @@ def _peticion(app: FastAPI) -> Request:
 
 
 def test_el_lifespan_deja_el_firewall_listo(client: TestClient, api_app: FastAPI) -> None:
-    """Al arrancar, las cadenas gestionadas ya EXISTEN. Vacias, pero existen.
+    """Al arrancar, las cadenas gestionadas existen Y estan reconciliadas (C2).
 
-    Se comprueba leyendo: el fake imita a iptables tambien en el fallo, y leer
-    una cadena inexistente lanzaria `FirewallCommandError`. Que no lance es la
-    prueba de que el scaffold se hizo.
+    Este test ha cambiado de afirmacion, y merece la pena dejar por que. Hasta
+    C2 decia que las cadenas quedaban VACIAS al arrancar, y era verdad: el
+    `lifespan` solo llamaba a `ensure_scaffold()`. Antes de B5 decia lo
+    contrario y pasaba **porque el fake mentia**, enseñando guardianes donde
+    iptables tenia una cadena vacia.
 
-    Lo que este test NO puede afirmar es que ya haya guardianes: `ensure_scaffold`
-    crea la cadena y el salto, y los guardianes entran con el primer
-    `apply_ruleset`. Antes decia `!= []` y pasaba solo porque el fake mentia
-    -> lo destapo la suite de contrato de B5 contra iptables real.
+    Lo que cambio en C2 no es aquella invariante sino quien hace el primer
+    apply. `ensure_scaffold` sigue creando la cadena vacia —montar no es
+    poblar, y eso se prueba donde le corresponde, en `tests/contract/` contra
+    los dos backends—; lo que hace ahora la aplicacion es reconciliar la
+    politica ella sola al arrancar, para que un reinicio de la VM no deje las
+    reglas viviendo solo en SQLite.
+
+    La contraprueba va pegada, y es la misma de siempre al reves: un backend
+    montado A MANO, sin `lifespan`, tiene la cadena vacia. Sin ella, "hay
+    guardianes" pasaria igual si los pusiera el scaffold.
     """
     assert client.get("/api/v1/health").status_code == 200
 
     firewall: Any = api_app.state.firewall
     assert firewall is not None
-    assert firewall.read_ruleset(Chain.INPUT) == []
-
-    # Y la contraprueba de que "vacia" significa vacia y no "no existe": una
-    # cadena que no existe lanza, y esta no lanza.
-    firewall.apply_ruleset(Chain.INPUT, [])
     assert [r for r in firewall.read_ruleset(Chain.INPUT) if r.is_guardian] != []
+
+    a_mano = build_firewall_backend(api_app.state.settings)
+    a_mano.ensure_scaffold()
+    assert a_mano.read_ruleset(Chain.INPUT) == []
 
 
 def test_todas_las_peticiones_comparten_el_mismo_backend(settings: Settings) -> None:

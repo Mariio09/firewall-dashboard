@@ -35,6 +35,7 @@ __all__ = [
     "CurrentUser",
     "DbSession",
     "Firewall",
+    "FirewallMontado",
     "RequestId",
     "RequireAdmin",
     "RequireOperator",
@@ -44,6 +45,7 @@ __all__ = [
     "get_current_user",
     "get_db",
     "get_firewall_backend",
+    "get_firewall_montado",
     "get_request_id",
     "require_role",
 ]
@@ -159,9 +161,25 @@ def get_firewall_backend(
     return backend
 
 
+def get_firewall_montado(request: Request) -> FirewallBackend | None:
+    """El backend que YA esta montado en esta aplicacion, o `None`.
+
+    La diferencia con `get_firewall_backend` es que esta no construye nada: si el
+    `lifespan` no dejo el backend puesto, devuelve `None` y se acabo.
+
+    Existe para `/ready`. Una sonda de disponibilidad que, al preguntarse si el
+    firewall esta montado, lo montara, dejaria de medir el estado para pasar a
+    fabricarlo: siempre respondaria que si, y ademas ejecutaria `ensure_scaffold`
+    —que escribe en iptables— cada vez que un supervisor la llama.
+    """
+    backend: FirewallBackend | None = getattr(request.app.state, "firewall", None)
+    return backend
+
+
 DbSession = Annotated[Session, Depends(get_db)]
 CurrentSettings = Annotated[Settings, Depends(get_settings_dep)]
 Firewall = Annotated[FirewallBackend, Depends(get_firewall_backend)]
+FirewallMontado = Annotated[FirewallBackend | None, Depends(get_firewall_montado)]
 
 
 # --------------------------------------------------------------------------- #

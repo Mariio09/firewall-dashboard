@@ -8,6 +8,9 @@ Estado tras A4: `crear_usuario`, `admin_user`, `operator_user`, `viewer_user`,
 `headers_de` y `auth_headers` (el admin, que es el caso comun).
 
 Estado tras A5: `crear_regla`, que da de alta reglas por la API.
+
+Estado tras C2: `session_factory`, que es la que recibe la aplicacion para poder
+reconciliar la politica al arrancar contra la base en memoria del test.
 """
 
 from __future__ import annotations
@@ -93,10 +96,22 @@ def engine(settings: Settings) -> Iterator[Engine]:
 
 
 @pytest.fixture
-def db_session(engine: Engine) -> Iterator[Session]:
+def session_factory(engine: Engine) -> sessionmaker[Session]:
+    """Fabrica de sesiones sobre la base en memoria del test.
+
+    Existe aparte de `db_session` porque hay codigo que abre su propia sesion en
+    vez de recibirla: el `lifespan` reconcilia la politica al arrancar (C2) y no
+    puede pedirla por inyeccion, porque todavia no hay peticion. Sin inyectarle
+    esta fabrica, ese codigo usaria la global, que sale del `.env` de la maquina
+    -- la segunda trampa de B5, verde en el Mac y roja en la VM.
+    """
+    return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
+
+
+@pytest.fixture
+def db_session(session_factory: sessionmaker[Session]) -> Iterator[Session]:
     """Una sesion por test, sobre la base en memoria."""
-    factory = sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
-    session = factory()
+    session = session_factory()
     try:
         yield session
     finally:
@@ -105,9 +120,11 @@ def db_session(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def api_app(settings: Settings, db_session: Session) -> FastAPI:
+def api_app(
+    settings: Settings, db_session: Session, session_factory: sessionmaker[Session]
+) -> FastAPI:
     """Aplicacion FastAPI con la base de datos de prueba inyectada."""
-    application = create_app(settings)
+    application = create_app(settings, session_factory=session_factory)
 
     def _override_get_db() -> Iterator[Session]:
         yield db_session
@@ -125,9 +142,10 @@ def api_app(settings: Settings, db_session: Session) -> FastAPI:
 def client(api_app: FastAPI) -> Iterator[TestClient]:
     """Cliente HTTP contra la aplicacion de prueba.
 
-    Se usa como context manager para que se ejecute el `lifespan`: si algun dia
-    el arranque falla (por ejemplo al añadir `ensure_scaffold` en C2), los tests
-    deben enterarse.
+    Se usa como context manager para que se ejecute el `lifespan`, que desde C2
+    hace dos cosas con efectos visibles: `ensure_scaffold()` y la reconciliacion
+    de la politica. Si el arranque falla, los tests tienen que enterarse aqui y
+    no en la primera peticion.
     """
     with TestClient(api_app) as test_client:
         yield test_client

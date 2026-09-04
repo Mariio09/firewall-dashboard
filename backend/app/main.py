@@ -5,18 +5,22 @@ porque permite construir una app limpia por test, con dependencias sobreescritas
 
     uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-El `lifespan` construye el backend de firewall y ejecuta `ensure_scaffold()`
-(B3). Lo que falta es reconciliar la politica guardada al arrancar, para que un
-reinicio de la VM restaure las reglas sin intervencion -> TODO(C2).
+El `lifespan` construye el backend de firewall, ejecuta `ensure_scaffold()` (B3)
+y **reconcilia la politica guardada contra el firewall** (C2): tras un reinicio
+de la VM las cadenas gestionadas nacen vacias, y sin ese paso la politica
+seguiria viva solo en SQLite hasta que alguien llamase a `/firewall/apply` a
+mano. Ver `docs/adr/0018-la-politica-se-reconcilia-al-arrancar.md`.
 """
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Callable
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from starlette.middleware.base import RequestResponseEndpoint
 
 from app.api.deps import build_firewall_backend
@@ -32,6 +36,9 @@ from app.core.logging import (
     get_logger,
     new_request_id,
 )
+from app.db.session import get_sessionmaker
+from app.firewall.base import FirewallBackend
+from app.services import firewall_service
 
 __all__ = ["app", "create_app"]
 
@@ -39,6 +46,83 @@ logger = get_logger(__name__)
 
 #: Cabecera estandar de facto para propagar el identificador de peticion.
 REQUEST_ID_HEADER = "X-Request-ID"
+
+
+def _fabrica_de_sesiones(application: FastAPI) -> Callable[[], Session]:
+    """La fabrica de sesiones de ESTA aplicacion, para el codigo sin peticion.
+
+    El `lifespan` necesita una sesion de base de datos y no puede pedirla por
+    inyeccion: `get_db` es una dependencia de FastAPI y no hay peticion todavia.
+
+    Por defecto es la misma fabrica global que usa `get_db`, asi que el arranque
+    habla exactamente con la base de datos con la que hablan los endpoints. Los
+    tests inyectan la suya en `create_app` para que la reconciliacion de arranque
+    escriba en la base en memoria y no en la que diga el `.env` de la maquina:
+    esa fue la segunda trampa de B5 -- `test_seed.py` leia el `.env` real y salia
+    verde en el Mac y rojo en la VM.
+    """
+    fabrica: Callable[[], Session] | None = getattr(application.state, "session_factory", None)
+    return fabrica if fabrica is not None else get_sessionmaker()
+
+
+def _reconciliar_al_arrancar(
+    application: FastAPI, settings: Settings, firewall: FirewallBackend
+) -> None:
+    """Devuelve al firewall el estado que describe la base de datos (paso C2).
+
+    Es lo que convierte "las reglas estan guardadas" en "las reglas estan
+    puestas" despues de reiniciar: el kernel arranca sin las cadenas gestionadas,
+    `ensure_scaffold` las crea VACIAS —montar no es poblar, invariante del
+    contrato de B5— y los guardianes y las reglas del usuario entran con el
+    primer `apply_ruleset`. Ese primer apply es este.
+
+    Se reconstruyen las tres cadenas SIEMPRE, tambien cuando no hay ninguna regla
+    guardada. No es un caso especial que sobre: con la politica vacia lo que
+    escribe `apply_chains` son las reglas guardian, y tenerlas puestas desde el
+    arranque significa que el puerto de gestion queda protegido ANTES de que
+    exista la primera regla capaz de cerrarlo. Un `if no hay reglas: no toques`
+    ahorraria tres comandos a cambio de dejar esa ventana abierta.
+
+    `AUTO_APPLY=false` lo apaga, y es coherente con lo que esa variable significa
+    en el resto de la aplicacion: "no escribas en el firewall por tu cuenta". Un
+    arranque no es una excepcion a eso.
+
+    Un fallo aqui NO impide arrancar (ADR-0015, ADR-0018). `apply_chains` ya deja
+    las reglas afectadas en `failed` con su `last_error` y lo registra en la
+    auditoria; lo que se hace aqui es no propagarlo. Un dashboard de firewall que
+    se niega a arrancar cuando el firewall falla es justo el que no puedes abrir
+    para averiguar por que falla.
+    """
+    if not settings.auto_apply:
+        logger.info("reconciliacion_de_arranque_omitida", motivo="auto_apply=false")
+        return
+
+    fabrica = _fabrica_de_sesiones(application)
+    try:
+        with fabrica() as session:
+            # `actor_name` y no un usuario: aqui no hay nadie. La fila de
+            # auditoria tiene que poder distinguirse de un apply de una cuenta
+            # borrada, que tambien llega con el usuario vacio.
+            respuesta = firewall_service.apply_chains(
+                session, firewall, actor_name="sistema:arranque"
+            )
+    except (AppError, SQLAlchemyError) as exc:
+        # `exc_info` no es opcional: el mensaje de un `AppError` esta saneado a
+        # proposito para poder devolverse al cliente, asi que sin la traza no
+        # queda en ningun sitio que fue lo que fallo.
+        logger.warning(
+            "reconciliacion_de_arranque_fallida",
+            backend=settings.firewall_backend,
+            motivo=str(exc),
+            exc_info=exc,
+        )
+        return
+
+    logger.info(
+        "politica_reconciliada",
+        backend=settings.firewall_backend,
+        cadenas={aplicada.chain.value: aplicada.applied for aplicada in respuesta.chains},
+    )
 
 
 @asynccontextmanager
@@ -81,15 +165,29 @@ async def lifespan(application: FastAPI) -> AsyncIterator[None]:
     else:
         application.state.firewall = firewall
         logger.info("firewall_preparado", backend=settings.firewall_backend)
+        # C2. Va DESPUES de publicar el backend en `app.state`: si la
+        # reconciliacion falla, la aplicacion queda con su firewall montado y
+        # `/firewall/status` puede contar lo que pasa. Al reves, un fallo aqui
+        # dejaria la aplicacion sin backend por un motivo que no es el suyo.
+        _reconciliar_al_arrancar(application, settings, firewall)
 
-    # TODO(C2): reconciliar la politica desde la base de datos al arrancar, para
-    # que un reinicio de la VM restaure las reglas sin intervencion.
     yield
     logger.info("aplicacion_detenida")
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
-    """Construye la aplicacion."""
+def create_app(
+    settings: Settings | None = None,
+    *,
+    session_factory: Callable[[], Session] | None = None,
+) -> FastAPI:
+    """Construye la aplicacion.
+
+    `session_factory` solo lo necesita el `lifespan`, que es el unico codigo de
+    la aplicacion que corre fuera de una peticion y por tanto no puede recibir la
+    sesion por inyeccion. Se deja pasar para que los tests apunten la
+    reconciliacion de arranque a su base en memoria; en produccion se omite y se
+    usa la misma fabrica global que `get_db`.
+    """
     settings = settings or get_settings()
     configure_logging(settings)
 
@@ -100,6 +198,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         lifespan=lifespan,
     )
     application.state.settings = settings
+    application.state.session_factory = session_factory
 
     # --- Middlewares ------------------------------------------------------- #
     # Se registran antes que las rutas por claridad; el orden de ejecucion en

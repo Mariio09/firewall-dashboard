@@ -40,6 +40,7 @@ from app.services import audit_service, rule_service
 __all__ = [
     "apply_chains",
     "build_status",
+    "hay_scaffold",
     "reconciliar_si_auto",
     "specs_de_cadena",
 ]
@@ -80,6 +81,25 @@ def specs_de_cadena(session: Session, chain: Chain) -> list[RuleSpec]:
         for regla in _reglas_de_cadena(session, chain)
         if regla.enabled
     ]
+
+
+def hay_scaffold(backend: FirewallBackend) -> bool:
+    """Las tres cadenas gestionadas existen y se pueden leer.
+
+    Se pregunta LEYENDO, que es la unica forma de saberlo: la existencia de una
+    cadena se consulta, no se deduce del mensaje de error, que en iptables 1.8.10
+    llega a ser `Incompatible with this kernel` para una cadena que no esta
+    (B4) -> `IptablesBackend`.
+
+    Lo usa `/ready`, y por eso no lanza: una sonda quiere un si o un no, y el
+    detalle de por que no ya esta en el log y en `/firewall/status`.
+    """
+    for chain in Chain:
+        try:
+            backend.read_ruleset(chain)
+        except FirewallError:
+            return False
+    return True
 
 
 # --------------------------------------------------------------------------- #
@@ -124,6 +144,7 @@ def apply_chains(
     chains: Sequence[Chain] | None = None,
     dry_run: bool = False,
     actor: User | None = None,
+    actor_name: str | None = None,
     client_ip: str | None = None,
     request_id: str | None = None,
 ) -> ApplyResponse:
@@ -137,6 +158,12 @@ def apply_chains(
     el mensaje saneado, se registra el fallo en la auditoria y se **relanza**: el
     llamante decide si eso es un 502 o una regla creada que aun no se ha podido
     aplicar.
+
+    `actor_name` existe para quien aplica sin ser un usuario: la reconciliacion
+    del arranque (C2, ADR-0018). Sin el, esa fila de auditoria quedaria con el
+    `username` vacio, que es lo mismo que deja un apply de una cuenta borrada, y
+    entonces la tabla no distinguiria "lo hizo el servicio al arrancar" de "no se
+    sabe quien fue". Una auditoria ambigua no es una auditoria.
     """
     objetivo = list(chains) if chains is not None else list(Chain)
     resultados: list[ApplyResult] = []
@@ -155,6 +182,7 @@ def apply_chains(
                     action=AuditAction.FIREWALL_APPLY,
                     result=AuditResult.FAILURE,
                     user=actor,
+                    username=actor_name,
                     entity_type="chain",
                     entity_id=chain.value,
                     payload={"error": exc.code, "message": exc.message[:MAX_LAST_ERROR]},
@@ -174,6 +202,7 @@ def apply_chains(
             session,
             action=AuditAction.FIREWALL_APPLY,
             user=actor,
+            username=actor_name,
             entity_type="chain",
             entity_id=",".join(chain.value for chain in objetivo),
             payload={
