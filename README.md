@@ -197,15 +197,12 @@ make panic          # emergencia: recuperar el acceso
 Las cuatro que cuentan el proyecto —el dashboard, el aviso de drift, el preview de
 comandos y la misma regla vista con `iptables -S` dentro de la VM— se toman
 siguiendo [`docs/capturas/README.md`](docs/capturas/README.md), que dice qué tiene
-que salir en cada una y cómo reproducir el estado. Una vez estén los PNG en esa
-carpeta, se descomenta este bloque:
+que salir en cada una y cómo reproducir el estado.
 
-<!--
 | | |
 |---|---|
 | ![Dashboard de reglas](docs/capturas/01-dashboard.png) | ![Aviso de drift](docs/capturas/02-drift.png) |
 | ![Preview de comandos](docs/capturas/03-preview.png) | ![La misma regla en iptables](docs/capturas/04-iptables.png) |
--->
 
 ## Stack
 
