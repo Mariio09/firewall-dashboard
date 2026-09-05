@@ -26,6 +26,7 @@ from enum import IntEnum, StrEnum
 __all__ = [
     "COMMENT_TAG",
     "GUARDIAN_TAG_PREFIX",
+    "REDES_CUALQUIERA",
     "Action",
     "ApplyResult",
     "Chain",
@@ -121,6 +122,12 @@ class SyncState(StrEnum):
 # --------------------------------------------------------------------------- #
 
 
+#: Las redes que significan "cualquiera" en cada familia. iptables las acepta y
+#: despues no las imprime, asi que dentro de una `RuleSpec` se guardan como
+#: `None`: es la misma regla, escrita como la escribe el sistema.
+REDES_CUALQUIERA: frozenset[str] = frozenset({"0.0.0.0/0", "::/0"})
+
+
 @dataclass(frozen=True, slots=True)
 class RuleSpec:
     """Descripcion completa e inmutable de una regla, lista para renderizar.
@@ -179,11 +186,24 @@ class RuleSpec:
         for campo in ("src_ip", "dst_ip"):
             valor: str | None = getattr(self, campo)
             if valor is not None:
-                object.__setattr__(
-                    self,
-                    campo,
-                    validators.validate_ip_or_cidr(valor, ip_version=self.ip_version, campo=campo),
+                normalizada: str | None = validators.validate_ip_or_cidr(
+                    valor, ip_version=self.ip_version, campo=campo
                 )
+                # "Cualquier direccion" NO es un selector: es la AUSENCIA de uno,
+                # y asi lo entiende iptables. Acepta `-s 0.0.0.0/0` sin rechistar
+                # y luego NO lo imprime en `iptables -S`, porque es su valor por
+                # defecto. Guardarlo como texto hacia que la spec de la base de
+                # datos jamas coincidiera con la leida del sistema, y la
+                # deteccion de drift diera por FALTANTE una regla que estaba
+                # perfectamente puesta: banner encendido, y un apply que no
+                # arregla nada porque vuelve a escribir lo mismo.
+                #
+                # Es el ADR-0006 con una vuelta mas: iptables no solo REESCRIBE
+                # lo que se le manda, tambien BORRA lo que significa "todo". La
+                # forma canonica, por tanto, es la suya: `None`.
+                if normalizada in REDES_CUALQUIERA:
+                    normalizada = None
+                object.__setattr__(self, campo, normalizada)
 
         for campo in ("src_port", "dst_port"):
             valor = getattr(self, campo)

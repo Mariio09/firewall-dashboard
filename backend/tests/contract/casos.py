@@ -67,11 +67,12 @@ UUIDS = (
     "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
     "b1a7c9d2-1f3e-4a5b-8c7d-9e0f1a2b3c4d",
     "0c1d2e3f-4a5b-6c7d-8e9f-0a1b2c3d4e5f",
+    "7d6c5b4a-3928-4716-a5b4-c3d2e1f00987",
 )
 
 
 def specs_de_prueba(chain: Chain = Chain.INPUT) -> list[RuleSpec]:
-    """Cuatro reglas que cubren lo que el modelo sabe expresar.
+    """Cinco reglas que cubren lo que el modelo sabe expresar.
 
     Se eligen para que el viaje de ida y vuelta signifique algo: iptables
     REESCRIBE lo que se le manda —añade `-m tcp`, ordena los flags a su manera,
@@ -110,5 +111,22 @@ def specs_de_prueba(chain: Chain = Chain.INPUT) -> list[RuleSpec]:
             action=Action.DROP,
             **{origen: "203.0.113.0/24", destino: "192.0.2.0/24"},
             rule_uuid=UUIDS[2],
+        ),
+        # "cualquier origen", escrito EXPLICITAMENTE. iptables lo acepta y luego
+        # NO lo imprime: `0.0.0.0/0` es su valor por defecto y desaparece de
+        # `iptables -S`. Sin este caso, el viaje de ida y vuelta se probaba solo
+        # con selectores que el sistema conserva, y por eso el ADR-0006 parecia
+        # cerrado estandolo a medias: una regla de verdad, creada en la UI en el
+        # bloque C, salia como FALTANTE estando puesta.
+        #
+        # ACCEPT y no DROP a proposito: el invariante 2 de este modulo exige que
+        # todo lo que descarta trafico apunte a TEST-NET, y "cualquier origen" es
+        # justo lo contrario. Un ACCEPT no puede cortarle el acceso a nadie.
+        spec(
+            action=Action.ACCEPT,
+            protocol=Protocol.TCP,
+            **{origen: "0.0.0.0/0"},
+            dst_port="65000",
+            rule_uuid=UUIDS[3],
         ),
     ]

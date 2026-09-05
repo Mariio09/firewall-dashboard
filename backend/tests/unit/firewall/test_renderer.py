@@ -72,6 +72,17 @@ def test_el_protocolo_all_no_se_emite() -> None:
     assert "-p" not in argv
 
 
+def test_cualquier_origen_no_emite_s() -> None:
+    """Con `src_ip="0.0.0.0/0"` el argv sale SIN `-s`, igual que sin origen.
+
+    No es cosmetica: emitirlo hacia que la regla volviera de iptables sin el
+    —lo borra, por ser su valor por defecto— y el drift no la reconociera.
+    """
+    spec = RuleSpec(chain=Chain.INPUT, action=Action.DROP, src_ip="0.0.0.0/0")
+    (argv,) = render_rule("FWDASH_INPUT", spec)
+    assert "-s" not in argv
+
+
 def test_la_etiqueta_lleva_uuid_y_comentario() -> None:
     spec = RuleSpec(
         chain=Chain.INPUT, action=Action.DROP, comment="bloqueo temporal", rule_uuid=UUID_DE_PRUEBA

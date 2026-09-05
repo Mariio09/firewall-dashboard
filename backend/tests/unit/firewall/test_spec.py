@@ -59,6 +59,27 @@ def test_dos_formas_de_escribir_la_misma_regla_son_la_misma_spec() -> None:
     assert len({a, b}) == 1  # hashable: el drift se puede calcular con conjuntos
 
 
+def test_cualquier_direccion_se_guarda_como_ausencia_de_selector() -> None:
+    """`0.0.0.0/0` no es un selector: es no tener ninguno, y asi lo guarda iptables.
+
+    iptables ACEPTA `-s 0.0.0.0/0` y despues NO lo imprime en `iptables -S`,
+    porque es su valor por defecto. Mientras la spec lo guardo como texto, la de
+    la base de datos nunca coincidia con la leida del sistema y la deteccion de
+    drift daba por FALTANTE una regla que estaba puesta -- con un apply que no
+    arreglaba nada, porque volvia a escribir exactamente lo mismo. Lo destapo una
+    regla de verdad ("Drop scan 22") en el bloque C.
+    """
+    assert spec_minima(protocol="tcp", src_ip="0.0.0.0/0", dst_port="22") == spec_minima(
+        protocol="tcp", dst_port="22"
+    )
+    assert spec_minima(dst_ip="0.0.0.0/0").dst_ip is None
+
+    # Y la contraprueba, porque "todo se vuelve None" seria igual de malo: una
+    # red de verdad, aunque sea enorme, SI es un selector y se conserva.
+    assert spec_minima(src_ip="10.0.0.0/8").src_ip == "10.0.0.0/8"
+    assert spec_minima(src_ip="0.0.0.0/1").src_ip == "0.0.0.0/1"
+
+
 def test_la_spec_es_inmutable() -> None:
     spec = spec_minima()
     with pytest.raises(dataclasses.FrozenInstanceError):
