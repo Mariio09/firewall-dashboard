@@ -6,7 +6,7 @@
 #     multipass shell firewall-lab
 #     sudo bash /opt/firewall-dashboard/infra/scripts/b4_diag_iptables.sh
 #
-#   O desde el Mac:  make vm-diag-iptables
+#   O desde el host:  make vm-diag-iptables
 #
 # SOLO LECTURA salvo por `modprobe`, que carga modulos del kernel y no cambia
 # ninguna regla. Cada comprobacion IMPRIME el error en vez de tragarselo: este

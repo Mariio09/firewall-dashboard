@@ -336,7 +336,7 @@ if [[ -f "$UNIDAD" ]]; then
         fi
 
         if [[ "$HOST" == "127.0.0.1" || "$HOST" == "localhost" ]]; then
-            fallo "API_HOST=$HOST" "el frontend del Mac no llegara; bind a la IP de la interfaz de Multipass"
+            fallo "API_HOST=$HOST" "el frontend del host no llegara; bind a la IP de la interfaz de Multipass"
         else
             ok "API_HOST=$HOST (red host-only de Multipass, no expuesta a la LAN)"
         fi

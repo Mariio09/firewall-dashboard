@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b4_verify.sh — arnes del paso B4: el auto-bloqueo, provocado a proposito
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/b4_verify.sh <guardian|ssh|cidr|todas> | tee b4.log
 #
 #   O bien:  make b4-verify FASE=ssh
@@ -16,7 +16,7 @@
 #
 # El paso 0 (`make b4-probe`) midio que `multipass exec` entra por SSH:
 #     bash <- sudo <- sshd <- sshd <- sshd <- systemd
-# y que el otro extremo de la conexion es el gateway, o sea el Mac. La frase que
+# y que el otro extremo de la conexion es el gateway, o sea el host. La frase que
 # el RUNBOOK repetia —"multipass shell no pasa por TCP"— es FALSA en esta
 # maquina, y con ella se caia el ancla de todo el bloque B.
 #
@@ -51,7 +51,7 @@ dato()    { printf "  %sDATO%s    %s\n" "$A" "$N" "$1"; }
 ok()      { printf "  %sOK%s      %s\n" "$V" "$N" "$1"; ACIERTOS=$((ACIERTOS+1)); }
 fallo()   { printf "  %sFALLO%s   %s\n" "$R" "$N" "$1"; FALLOS=$((FALLOS+1)); }
 
-# macOS no trae `timeout`. Y hace falta de verdad: en la fase 'ssh' el comando
+# Este host no trae `timeout`. Y hace falta de verdad: en la fase 'ssh' el comando
 # que se mide es exactamente el que se queda colgado.
 con_limite() {
     local limite="$1"; shift
@@ -103,7 +103,7 @@ echo "================================================================"
 # --------------------------------------------------------------------------- #
 seccion "0. Pre-vuelo (nada se modifica todavia)"
 
-command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el Mac." >&2; exit 1; }
+command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el host." >&2; exit 1; }
 [[ "$(multipass info "$VM" 2>/dev/null | awk '/^State:/{print $2}')" == "Running" ]] \
     || { echo "ERROR: la VM no esta corriendo." >&2; exit 1; }
 IP_VM="$(multipass info "$VM" | awk '/IPv4/{print $2}')"

@@ -54,7 +54,7 @@ que uno que no puede saberlo.
 ## Consecuencias
 
 **Positivas:** metadatos, auditoría y persistencia; el frontend funciona sin
-privilegios; el bloque A (todo el MVP en el Mac contra un backend falso) es
+privilegios; el bloque A (todo el MVP en el host contra un backend falso) es
 posible precisamente porque la verdad vive en la base de datos.
 
 **Negativas:** hay que escribir reconciliación y detección de drift, que no

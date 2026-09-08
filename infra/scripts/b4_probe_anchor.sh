@@ -2,12 +2,12 @@
 # =========================================================================== #
 # b4_probe_anchor.sh — B4, paso 0: ¿es real el ancla de recuperacion?
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/b4_probe_anchor.sh | tee b4-probe.log
 #
 #   O bien:  make b4-probe
 #
-# SOLO LECTURA. Ni una sola regla se crea, se borra ni se modifica, ni en el Mac
+# SOLO LECTURA. Ni una sola regla se crea, se borra ni se modifica, ni en el host
 # ni en la VM. Este script solo mide.
 #
 # --------------------------------------------------------------------------- #
@@ -48,11 +48,11 @@ echo " $(date -Iseconds)  ·  $(hostname)  ·  VM=$VM"
 echo "================================================================"
 
 command -v multipass >/dev/null 2>&1 || {
-    echo "ERROR: no hay multipass en el PATH. Esto se ejecuta en el Mac." >&2; exit 1; }
+    echo "ERROR: no hay multipass en el PATH. Esto se ejecuta en el host." >&2; exit 1; }
 [[ -f "$PROBE" ]] || { echo "ERROR: falta $PROBE" >&2; exit 1; }
 
 # --------------------------------------------------------------------------- #
-seccion "M1. El Mac y la VM"
+seccion "M1. El host y la VM"
 
 dato "$(multipass version | tr '\n' ' ')"
 ESTADO="$(multipass info "$VM" 2>/dev/null | awk '/^State:/{print $2}')"

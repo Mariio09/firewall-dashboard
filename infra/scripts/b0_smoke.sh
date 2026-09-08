@@ -17,7 +17,7 @@
 # QUE **NO** DEMUESTRA
 # Que la VM real funcione. Las respuestas son inventadas: valida el FLUJO del
 # script, no la maquina. La verificacion de verdad sigue siendo `make vm-provision`
-# en el Mac. Esto es lo que se puede correr en cualquier Linux, sin multipass.
+# en el host. Esto es lo que se puede correr en cualquier Linux, sin multipass.
 # =========================================================================== #
 set -uo pipefail
 
@@ -28,7 +28,7 @@ trap 'rm -rf "$STUB"' EXIT
 cat > "$STUB/multipass" <<'STUBFIN'
 #!/usr/bin/env bash
 case "$1" in
-  version) echo "multipass  1.16.3+mac"; exit 0 ;;
+  version) echo "multipass  1.16.3+host"; exit 0 ;;
   info)    printf 'Name: firewall-lab\nState: Running\nImage: Ubuntu 24.04 LTS\nIPv4: 192.168.64.7\n'; exit 0 ;;
   delete|launch|transfer|unmount|mount) exit 0 ;;
   exec) shift 2; [[ "$1" == "--" ]] && shift

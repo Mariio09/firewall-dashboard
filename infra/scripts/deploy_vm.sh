@@ -41,7 +41,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 if [[ ! -d "$APP_DIR/.git" ]]; then
-    echo "ERROR: $APP_DIR no es un clon de git. Lanza 'make vm-clone' desde el Mac." >&2
+    echo "ERROR: $APP_DIR no es un clon de git. Lanza 'make vm-clone' desde el host." >&2
     exit 1
 fi
 
@@ -130,9 +130,9 @@ if [[ -f "$CONF_FILE" ]]; then
     echo "    ya existe: no se toca (contiene el secreto JWT en uso)"
 else
     # IP de la interfaz de Multipass. El backend NO puede hacer bind a 127.0.0.1
-    # si el frontend del Mac tiene que llegar; la red host-only de Multipass no
+    # si el frontend del host tiene que llegar; la red host-only de Multipass no
     # esta expuesta a la LAN. Su rango se DERIVA aqui abajo y no se escribe: no
-    # es fijo entre maquinas ni entre versiones (en este Mac es 192.168.252.0/24,
+    # es fijo entre maquinas ni entre versiones (en este host es 192.168.252.0/24,
     # no el 192.168.64.0/24 que la documentacion daba por hecho).
     VM_IP="$(ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1)"
     VM_CIDR="$(echo "$VM_IP" | awk -F. '{print $1"."$2"."$3".0/24"}')"

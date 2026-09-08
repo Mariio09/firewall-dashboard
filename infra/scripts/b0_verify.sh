@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b0_verify.sh — paso B0: reprovisionar firewall-lab y demostrar que funciona
 #
-#   Desde la raiz del repo, EN EL MAC (multipass no existe en el puente):
+#   Desde la raiz del repo, EN EL HOST (multipass no existe en el puente):
 #     bash infra/scripts/b0_verify.sh 2>&1 | tee b0-verify.log
 #
 # QUE HACE, EN ORDEN
@@ -27,7 +27,7 @@
 # proyecto, pero el script PIDE CONFIRMACION antes. Con `--si` no la pide.
 #
 # En la VM solo se LEE iptables (`iptables -S`) para probar que la politica
-# nace virgen. No se escribe ni una regla. Nada toca el iptables del Mac.
+# nace virgen. No se escribe ni una regla. Nada toca el iptables del host.
 # =========================================================================== #
 set -uo pipefail
 
@@ -63,7 +63,7 @@ info()  { printf '         %s\n' "$*"; }
 # remoto ya haya terminado. Fue exactamente lo que paso con `git clone`: 0,09 s
 # lanzado a mano, 137 lanzado desde el arnes, y el repo clonado correctamente.
 #
-# Limite de segundos para cada comando dentro de la VM. macOS no trae `timeout`
+# Limite de segundos para cada comando dentro de la VM. Este host no trae `timeout`
 # (es de coreutils de GNU), asi que se vigila a mano: el comando va al fondo y
 # un centinela lo mata si se pasa del limite.
 #
@@ -87,7 +87,7 @@ LIMITE_CLONE="${LIMITE_CLONE:-240}"
 envm() {
     local tmp pid vigia rc lim
     lim="${LIMITE:-$LIMITE_VM}"
-    # Forma portable: `mktemp -t nombre` vale en BSD (macOS) pero GNU exige X's.
+    # Forma portable: `mktemp -t nombre` vale en BSD pero GNU exige X's.
     tmp="$(mktemp "${TMPDIR:-/tmp}/b0exec.XXXXXX")"
     multipass exec "$VM" -- "$@" >"$tmp" 2>/dev/null </dev/null &
     pid=$!
@@ -142,7 +142,7 @@ envm_err() {
 paso "0. Comprobaciones previas"
 
 command -v multipass >/dev/null 2>&1 \
-  || { echo "ERROR: no encuentro 'multipass'. Esto se ejecuta en el Mac, no en el puente."; exit 1; }
+  || { echo "ERROR: no encuentro 'multipass'. Esto se ejecuta en el host, no en el puente."; exit 1; }
 [[ -f "$CLOUD_INIT" ]] \
   || { echo "ERROR: no encuentro $CLOUD_INIT"; exit 1; }
 
@@ -308,7 +308,7 @@ paso "3. Llevar el codigo a la VM y comprobar que es EL MISMO"
 # deja el directorio vacio cuando multipassd no puede leer la carpeta de origen
 # —el caso de ~/Downloads, protegida por TCC—, y eso no se arregla desde aqui.
 # El bundle no necesita credenciales del repo privado, ni red en la VM, ni
-# permisos sobre la carpeta del Mac.
+# permisos sobre la carpeta del host.
 
 if envm bash -c "command -v git >/dev/null"; then
     ok "git presente en la VM (viene del cloud-init)"
@@ -317,18 +317,18 @@ else
 fi
 
 RAMA="$(git -C "$RAIZ" --no-optional-locks rev-parse --abbrev-ref HEAD 2>/dev/null)"
-HEAD_MAC="$(git -C "$RAIZ" --no-optional-locks rev-parse HEAD 2>/dev/null)"
+HEAD_HOST="$(git -C "$RAIZ" --no-optional-locks rev-parse HEAD 2>/dev/null)"
 BUNDLE="${TMPDIR:-/tmp}/fwdash-b0.bundle"
 
 # Lo que NO viaja es tan importante como lo que viaja, y es la diferencia real
 # frente al montaje: con un mount, editar el archivo bastaba.
 if [[ -n "$(git -C "$RAIZ" --no-optional-locks status --porcelain 2>/dev/null)" ]]; then
-    aviso "el arbol del Mac tiene cambios SIN COMMITEAR: no van a llegar a la VM."
+    aviso "el arbol del host tiene cambios SIN COMMITEAR: no van a llegar a la VM."
     aviso "Con el clonado solo viaja lo commiteado. Commitea y 'make vm-sync'."
 fi
 
 if git -C "$RAIZ" --no-optional-locks bundle create "$BUNDLE" --all >/dev/null 2>&1; then
-    ok "bundle creado en el Mac (rama $RAMA, HEAD ${HEAD_MAC:0:8})"
+    ok "bundle creado en el host (rama $RAMA, HEAD ${HEAD_HOST:0:8})"
 else
     fallo "no he podido crear el bundle del repo"
 fi
@@ -377,10 +377,10 @@ fi
 # La prueba fuerte: mismo commit a los dos lados. Compara el arbol ENTERO, no un
 # archivo suelto, y ademas demuestra que dentro hay un repo de git de verdad.
 HEAD_VM="$(envm git -C "$DESTINO" rev-parse HEAD)"
-if [[ -n "$HEAD_VM" && "$HEAD_VM" == "$HEAD_MAC" ]]; then
-    ok "la VM esta en el mismo commit que el Mac (${HEAD_MAC:0:8})"
+if [[ -n "$HEAD_VM" && "$HEAD_VM" == "$HEAD_HOST" ]]; then
+    ok "la VM esta en el mismo commit que el host (${HEAD_HOST:0:8})"
 else
-    fallo "commits distintos: mac ${HEAD_MAC:0:8} / vm ${HEAD_VM:0:8}"
+    fallo "commits distintos: host ${HEAD_HOST:0:8} / vm ${HEAD_VM:0:8}"
 fi
 
 if [[ -n "$(envm test -x "$DESTINO/infra/scripts/panic_reset.sh" && echo x)" ]]; then

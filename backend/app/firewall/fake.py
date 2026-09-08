@@ -4,7 +4,7 @@ Bloque A3. Implementa el mismo `FirewallBackend` que `IptablesBackend`, guardand
 las reglas en un diccionario. Se usa en dos sitios:
 
   - En los tests (unitarios, de integracion y de contrato).
-  - En desarrollo real, con `FIREWALL_BACKEND=fake` en el `.env` del Mac. El
+  - En desarrollo real, con `FIREWALL_BACKEND=fake` en el `.env` del host. El
     dashboard funciona de punta a punta contra este backend.
 
 EL RIESGO DE ESTE ARCHIVO (docs/ARCHITECTURE.md §8): un doble de prueba puede
@@ -17,7 +17,7 @@ Tres medidas contra eso, y la tercera es la de A3:
   1. El parser y el renderer se diseñaron contra salidas REALES capturadas en
      `tests/fixtures/iptables_output/` (paso A2).
   2. `tests/contract/` ejecuta la misma suite contra este backend y contra el
-     real. En el Mac corre solo con el fake; en la VM, con los dos.
+     real. En el host corre solo con el fake; en la VM, con los dos.
   3. **Este fake no reimplementa nada.** Renderiza con el `renderer` de verdad y
      lee de vuelta con el `parser` de verdad: lo unico que finge es el sistema
      operativo que habria en medio. Asi no puede inventarse un formato propio, y

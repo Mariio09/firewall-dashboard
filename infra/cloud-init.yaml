@@ -58,7 +58,7 @@ runcmd:
 final_message: |
   firewall-lab lista tras $UPTIME segundos.
 
-  Siguientes pasos, desde el Mac:
+  Siguientes pasos, desde el host:
     make vm-clone     # meter el codigo (clonado, no montado: ADR-0013)
     make vm-deploy    # desplegar en /opt: usuario, venv, .env y DB
     make recon        # paso A2: capturar fixtures (solo lectura)

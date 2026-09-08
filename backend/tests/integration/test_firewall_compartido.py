@@ -112,7 +112,7 @@ def test_el_fake_se_configura_con_los_settings(settings: Settings) -> None:
 
 #: Ruta absoluta, con un nombre que SI esta en la allowlist, de algo que no
 #: existe. Sirve para llegar hasta el subproceso sin depender de que la maquina
-#: donde corre la suite tenga iptables — que es justo lo que no tiene el Mac.
+#: donde corre la suite tenga iptables — que es justo lo que no tiene el host.
 IPTABLES_INEXISTENTE = "/nonexistent/sbin/iptables"
 
 

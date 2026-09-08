@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b5_verify.sh — arnes del paso B5: la suite de contrato contra iptables REAL
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/b5_verify.sh | tee b5.log
 #
 #   O bien:  make b5-verify
@@ -18,13 +18,13 @@
 # iptables SIMULADO. Lo que faltaba —y es B5— es que iptables de VERDAD acepte
 # ese argv y devuelva algo que el parser sepa leer. De ahi las dos mitades:
 #
-#   pytest                       la suite del Mac, otra vez pero DENTRO de la VM
+#   pytest                       la suite del host, otra vez pero DENTRO de la VM
 #   pytest -m requires_iptables  contrato contra iptables real + paridad + saltos
 #
 # Y tres comprobaciones que no son tests de Python sino del arnes, todas salidas
 # de las cinco trampas de este proyecto (nota `Estrategia de tests`):
 #
-#   1. Que el codigo de la VM sea EL MISMO commit que el del Mac. Si no, la
+#   1. Que el codigo de la VM sea EL MISMO commit que el del host. Si no, la
 #      suite verde estaria probando otra cosa, y no habria forma de notarlo.
 #   2. Que iptables responda ANTES de empezar, y sin silenciar el error: en B4
 #      un `2>/dev/null` convirtio un fallo en tres politicas vacias y el arnes se
@@ -56,7 +56,7 @@ echo "================================================================"
 # --------------------------------------------------------------------------- #
 seccion "0. Pre-vuelo (nada se modifica todavia)"
 
-command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el Mac." >&2; exit 1; }
+command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el host." >&2; exit 1; }
 [[ "$(multipass info "$VM" 2>/dev/null | awk '/^State:/{print $2}')" == "Running" ]] \
     || { echo "ERROR: la VM no esta corriendo." >&2; exit 1; }
 
@@ -95,20 +95,20 @@ if [[ "${RESTOS:-0}" -gt 0 ]]; then
 fi
 ok "no hay restos de FWTEST_* en el sistema"
 
-# 4. EL CODIGO DE LA VM ES EL DEL MAC. Sin esto, un verde no dice de que codigo.
-HEAD_MAC="$(git --no-optional-locks rev-parse HEAD)"
+# 4. EL CODIGO DE LA VM ES EL DEL HOST. Sin esto, un verde no dice de que codigo.
+HEAD_HOST="$(git --no-optional-locks rev-parse HEAD)"
 HEAD_VM="$(en_vm git -C "$CLON" rev-parse HEAD 2>/dev/null | tr -d '\r')"
-if [[ "$HEAD_MAC" != "$HEAD_VM" ]]; then
+if [[ "$HEAD_HOST" != "$HEAD_VM" ]]; then
     echo "ERROR: la VM tiene otro commit." >&2
-    echo "       Mac: ${HEAD_MAC:0:12}   VM: ${HEAD_VM:0:12}" >&2
+    echo "       Host: ${HEAD_HOST:0:12}   VM: ${HEAD_VM:0:12}" >&2
     echo "       Commitea y luego: make vm-sync" >&2
     exit 1
 fi
-ok "el clon de la VM esta en el mismo commit que el Mac (${HEAD_MAC:0:12})"
+ok "el clon de la VM esta en el mismo commit que el host (${HEAD_HOST:0:12})"
 
 SUCIO="$(git --no-optional-locks status --porcelain | grep -v '\.log$')"
 if [[ -n "$SUCIO" ]]; then
-    dato "hay cambios sin commitear en el Mac: NO viajan a la VM, no se prueban"
+    dato "hay cambios sin commitear en el host: NO viajan a la VM, no se prueban"
     sed 's/^/            /' <<< "$SUCIO"
 fi
 
@@ -138,7 +138,7 @@ if [[ "${B5_SIN_PREGUNTAR:-0}" != "1" ]]; then
 fi
 
 # --------------------------------------------------------------------------- #
-seccion "1. La suite del Mac, pero dentro de la VM"
+seccion "1. La suite del host, pero dentro de la VM"
 # Corre sin privilegios y sin tocar iptables: si esta falla, lo que sigue no se
 # puede interpretar.
 if en_vm bash -c "cd $CLON/backend && .venv/bin/python -m pytest -q -p no:cacheprovider"; then

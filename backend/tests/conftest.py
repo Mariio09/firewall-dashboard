@@ -56,7 +56,7 @@ def settings() -> Settings:
     """Configuracion de prueba, independiente del `.env` que haya en la maquina.
 
     Los valores se pasan explicitos precisamente para que un `.env` local no
-    pueda cambiar el resultado de la suite: un test que pasa en tu Mac y falla
+    pueda cambiar el resultado de la suite: un test que pasa en tu host y falla
     en CI por una variable de entorno es tiempo perdido garantizado.
     """
     return Settings(
@@ -103,7 +103,7 @@ def session_factory(engine: Engine) -> sessionmaker[Session]:
     vez de recibirla: el `lifespan` reconcilia la politica al arrancar (C2) y no
     puede pedirla por inyeccion, porque todavia no hay peticion. Sin inyectarle
     esta fabrica, ese codigo usaria la global, que sale del `.env` de la maquina
-    -- la segunda trampa de B5, verde en el Mac y roja en la VM.
+    -- la segunda trampa de B5, verde en el host y roja en la VM.
     """
     return sessionmaker(bind=engine, autocommit=False, autoflush=False, expire_on_commit=False)
 

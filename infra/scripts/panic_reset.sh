@@ -6,7 +6,7 @@
 #     multipass shell firewall-lab
 #     sudo bash /home/ubuntu/app/infra/scripts/panic_reset.sh
 #
-#   Desde el Mac:  make panic
+#   Desde el host:  make panic
 #
 # Recuerda: `multipass shell` NO pasa por TCP. Sigue funcionando aunque hayas
 # cerrado la red por completo. Esa es tu via de escape.

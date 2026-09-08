@@ -1,14 +1,14 @@
 # Preparar la VM `firewall-lab`
 
 > **Cuándo necesitas esto.** En el bloque A no hace falta: el backend corre en el
-> Mac con `FIREWALL_BACKEND=fake`. Solo necesitas la VM en dos momentos: el paso
+> host con `FIREWALL_BACKEND=fake`. Solo necesitas la VM en dos momentos: el paso
 > **A2** (captura de fixtures, 20 minutos, solo lectura) y el **bloque B** completo.
 
 ---
 
 ## Requisitos
 
-Multipass en macOS (Apple Silicon):
+Multipass (arquitectura ARM):
 
 ```bash
 brew install --cask multipass
@@ -75,11 +75,11 @@ El código entra **clonado**, no montado: ver
 `docs/adr/0013-el-codigo-entra-en-la-vm-clonado.md`. Se manda con un `git bundle`
 transferido por `multipass transfer`, así que **no hacen falta credenciales del
 repo privado dentro de la VM**, ni red en la VM, ni permisos especiales sobre la
-carpeta del Mac.
+carpeta del host.
 
-> ⚠️ **Solo viaja lo commiteado.** Editar un archivo en el Mac ya no basta:
+> ⚠️ **Solo viaja lo commiteado.** Editar un archivo en el host ya no basta:
 > commitea y lanza `make vm-sync`. `b0_verify.sh` compara el `HEAD` de los dos
-> lados y avisa si el árbol del Mac está sucio, precisamente para que no depures
+> lados y avisa si el árbol del host está sucio, precisamente para que no depures
 > código que no es el que corre.
 
 ### La alternativa: montar
@@ -88,12 +88,12 @@ carpeta del Mac.
 make vm-mount
 ```
 
-Solo funciona si `multipassd` puede leer la carpeta del repo. **En macOS,
-`~/Downloads`, `~/Documents` y `~/Desktop` están protegidas por TCC**: el mount
+Solo funciona si `multipassd` puede leer la carpeta del repo. **En el host,
+`~/Downloads`, `~/Documents` y `~/Desktop` pueden estar protegidas por TCC**: el mount
 devuelve 0 y el directorio sale vacío dentro de la VM. Para usarlo, ten el repo
 fuera de esas carpetas o concede Acceso total al disco a `multipassd`.
 
-> Si el `mount` falla en Apple Silicon, activa además el soporte:
+> Si el `mount` falla en arquitectura ARM, activa además el soporte:
 > `multipass set local.privileged-mounts=true`
 
 ---
@@ -137,7 +137,7 @@ este repo toca `/etc/sudoers.d/` ni `/etc/systemd/system/` por su cuenta.
 ### 4.1 Desplegar
 
 ```bash
-make vm-sync          # desde el Mac: lleva a la VM lo COMMITEADO
+make vm-sync          # desde el host: lleva a la VM lo COMMITEADO
 make vm-deploy        # dentro de la VM: despliega, instala y migra
 ```
 
@@ -162,7 +162,7 @@ make vm-deploy        # dentro de la VM: despliega, instala y migra
 > de valer, porque también cambia el `JWT_SECRET_KEY`).
 
 Dentro de la VM sí se usa `python3 -m venv`: el `uv` del [ADR-0005](adr/0005-uv-como-gestor-de-paquetes.md)
-es una decisión del **Mac**, donde `ensurepip` está roto. En Ubuntu el venv funciona.
+es una decisión de esta máquina, donde `ensurepip` está roto. En Ubuntu el venv funciona.
 
 ### 4.2 Privilegios: elige **una** de las dos
 
@@ -235,7 +235,7 @@ make vm-deploy
 sudo systemctl restart firewall-dashboard    # dentro de la VM
 ```
 
-Desde el Mac:
+Desde el host:
 
 ```bash
 curl http://$(make -s vm-ip):8000/health

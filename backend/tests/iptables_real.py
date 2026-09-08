@@ -4,7 +4,7 @@ Lo usan la suite de contrato (mitad `iptables`) y la de `e2e_vm`. Si cada una lo
 montara por su cuenta, acabarian probando dos configuraciones distintas y la
 comparacion entre ellas dejaria de significar nada.
 
-Nada de este modulo se importa en el Mac: las funciones traen dentro el import de
+Nada de este modulo se importa en el host: las funciones traen dentro el import de
 `SubprocessRunner`, que es el unico modulo del proyecto que carga `subprocess`.
 """
 

@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b2_verify.sh — arnes del paso B2: el runner de subprocess
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/b2_verify.sh | tee /tmp/b2.log
 #
 # NO MODIFICA NADA del repo: solo lee, ejecuta la suite y crea binarios de

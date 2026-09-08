@@ -90,7 +90,7 @@ def test_el_preview_de_los_dos_es_el_mismo_argv(
 ) -> None:
     """`GET /firewall/preview` con el fake tiene que enseñar lo que hara la VM.
 
-    Es lo que hace util desarrollar el frontend en el Mac: si el preview del fake
+    Es lo que hace util desarrollar el frontend en el host: si el preview del fake
     no fuera el argv real, la pantalla mas util del dashboard estaria mintiendo.
     """
     firewall.ensure_scaffold()
@@ -109,7 +109,7 @@ def test_los_contadores_se_indexan_igual_en_los_dos(
     """Las claves, no los valores: los del fake son cero y los reales no tienen por que.
 
     Que las CLAVES coincidan es lo que garantiza que el dashboard ate cada
-    contador a la misma fila en el Mac y en la VM.
+    contador a la misma fila en el host y en la VM.
     """
     firewall.ensure_scaffold()
     fake.ensure_scaffold()

@@ -183,7 +183,7 @@ firewall-dashboard/
 │   │   │   ├── parser.py           # salida de iptables -S / -L -v -n → estructuras
 │   │   │   ├── runner.py           # CommandRunner: subprocess con allowlist y timeout
 │   │   │   ├── iptables.py         # IptablesBackend (implementación real)
-│   │   │   └── fake.py             # InMemoryBackend (tests + desarrollo en Mac)
+│   │   │   └── fake.py             # InMemoryBackend (tests + desarrollo en host)
 │   │   │
 │   │   ├── api/
 │   │   │   ├── deps.py             # get_db, get_current_user, get_firewall_backend
@@ -501,7 +501,7 @@ cubre una cosa:
 
 En `api/deps.py`, `get_firewall_backend()` devuelve uno u otro según
 `settings.firewall_backend`. Efecto secundario muy práctico: **puedes levantar el
-backend entero en tu Mac** con `FIREWALL_BACKEND=fake` y desarrollar el frontend sin
+backend entero en tu host** con `FIREWALL_BACKEND=fake` y desarrollar el frontend sin
 tocar la VM. La VM solo hace falta para lo real.
 
 Para el parser: guarda salidas reales de `iptables -S` y `iptables -L -v -n` en
@@ -546,25 +546,25 @@ staging tipo Terraform (`plan` → `apply`) es cambiar un flag, no reescribir na
 ### 4.1 Qué corre dónde
 
 La tabla siguiente describe el estado **final** (bloque C del §8). Durante el bloque A
-no hay VM en absoluto: backend, frontend, DB y tests corren todos en el Mac con
+no hay VM en absoluto: backend, frontend, DB y tests corren todos en el host con
 `FIREWALL_BACKEND=fake`.
 
 | Componente | Máquina | Motivo |
 |---|---|---|
-| Frontend (`vite dev`) | **Mac** | solo habla HTTP; no necesita Linux |
+| Frontend (`vite dev`) | **Host** | solo habla HTTP; no necesita Linux |
 | Backend FastAPI | **VM `firewall-lab`** | necesita ejecutar `iptables` |
 | SQLite (`firewall.db`) | **VM** | vive junto al backend, en `/var/lib/firewall-dashboard/` |
 | Alembic | **VM** | migra la DB que está en la VM |
-| Tests unitarios + integración | **Mac** | usan `FakeFirewallBackend`, no necesitan iptables |
+| Tests unitarios + integración | **Host** | usan `FakeFirewallBackend`, no necesitan iptables |
 | Tests `e2e_vm` | **VM** | tocan iptables real |
-| Código fuente | **Mac**, montado en la VM | `multipass mount ~/dev/firewall-dashboard firewall-lab:/home/ubuntu/app` |
+| Código fuente | **Host**, montado en la VM | `multipass mount ~/dev/firewall-dashboard firewall-lab:/home/ubuntu/app` |
 
-Editas en tu Mac con tu editor de siempre; el proceso corre en la VM sobre el mismo
+Editas en tu host con tu editor de siempre; el proceso corre en la VM sobre el mismo
 árbol de archivos. Sin `rsync` ni redespliegues.
 
 Un detalle importante: el backend **no puede** hacer bind a `127.0.0.1` si quieres
-llegar desde el Mac. Bind a la IP de la interfaz de Multipass (la red `192.168.64.0/24`
-en Apple Silicon), que es host-only y no está expuesta a tu LAN. Eso cumple "no expongas
+llegar desde el host. Bind a la IP de la interfaz de Multipass (la red `192.168.64.0/24`
+en arquitectura ARM), que es host-only y no está expuesta a tu LAN. Eso cumple "no expongas
 el backend fuera de mi red local" sin necesidad de túnel. Si prefieres máxima
 paranoia: bind a `127.0.0.1` y `ssh -L 8000:localhost:8000 ubuntu@<ip-vm>`.
 
@@ -595,7 +595,7 @@ BOOTSTRAP_ADMIN_USERNAME=admin
 BOOTSTRAP_ADMIN_PASSWORD=             # solo para el primer arranque
 
 # --- Firewall ---
-FIREWALL_BACKEND=fake                 # fake | iptables  ← el interruptor Mac/VM
+FIREWALL_BACKEND=fake                 # fake | iptables  ← el interruptor Host/VM
 IPTABLES_BIN=/usr/sbin/iptables
 IPTABLES_TABLE=filter
 MANAGED_CHAIN_PREFIX=FWDASH
@@ -750,11 +750,11 @@ tests/e2e_vm/        marker requires_iptables: deseleccionados, nunca `skip`
 ```
 
 En `pyproject.toml`: `addopts = "-m 'not requires_iptables' --strict-markers"`. Así `pytest`
-a secas funciona en tu Mac, y en la VM se lanzan las dos mitades con `make test-vm`.
+a secas funciona en tu host, y en la VM se lanzan las dos mitades con `make test-vm`.
 
 El backend de la suite de contrato se elige con `pytest_generate_tests` + `indirect`, y el
 parámetro `iptables` lleva el marcador. La forma importa: toda la suite depende de que ese
-marcador se aplique de verdad, y si no lo hiciera, la mitad real correría también en el Mac
+marcador se aplique de verdad, y si no lo hiciera, la mitad real correría también en el host
 —donde no hay iptables— y saldría roja por el motivo equivocado.
 
 Deseleccionar no es saltar. Quien decide *dónde* corren esos tests es el marcador; una vez
@@ -784,7 +784,7 @@ verde en el README es señal barata y efectiva en un portfolio.
 ## 6. Documentación
 
 - **`README.md`**: qué es y por qué existe, captura del dashboard (lo primero que mira
-  un reclutador), arquitectura en 5 líneas, setup en dos bloques (Mac y VM), stack,
+  un reclutador), arquitectura en 5 líneas, setup en dos bloques (host y VM), stack,
   estado de las fases, y un aviso claro de que es un laboratorio.
 - **`docs/SECURITY.md`**: el documento que te van a hacer preguntar en una entrevista.
   Modelo de amenazas (activos, atacantes, superficie), inyección de comandos y cómo se
@@ -848,7 +848,7 @@ node_modules/
 frontend/dist/
 .vite/
 
-# macOS / editores
+# Archivos del sistema operativo / editores
 .DS_Store
 .idea/
 .vscode/*
@@ -922,12 +922,12 @@ por backend, que se ejecuta contra los dos:
 def backend(request): ...
 ```
 
-En el Mac corre solo con `fake`; en la VM, con los dos. Si el fake se desvía de la
+En el host corre solo con `fake`; en la VM, con los dos. Si el fake se desvía de la
 realidad, el test de contrato lo detecta en el bloque B — no cuando ya tienes el
 frontend encima. Esta es la técnica estándar para mantener honesto un doble de prueba,
 y es exactamente lo que convierte el bloque C en un no-evento.
 
-### Bloque A — La aplicación (todo en el Mac)
+### Bloque A — La aplicación (todo en el host)
 
 Ni Multipass ni iptables (salvo la expedición inicial). `FIREWALL_BACKEND=fake`.
 
@@ -939,7 +939,7 @@ Ni Multipass ni iptables (salvo la expedición inicial). `FIREWALL_BACKEND=fake`
 | A3 | `firewall/`: `spec`, `validators`, `renderer`, `parser`, `base`, `fake` + sus tests | la pieza delicada, terminada y testeada, sin subprocess |
 | A4 | Auth: usuarios, JWT, RBAC, `seed` del admin | login funcional |
 | A5 | `/rules` CRUD + `/firewall/{apply,preview,status}` contra el fake | tests de integración en verde |
-| A6 | Frontend: login, tabla de reglas, formulario, badge de estado | **el MVP entero funciona en tu Mac** |
+| A6 | Frontend: login, tabla de reglas, formulario, badge de estado | **el MVP entero funciona en tu host** |
 
 Al final del bloque A tienes una aplicación completa y demostrable. Corre en tu portátil,
 sin VM, sin privilegios: el `FakeBackend` guarda las reglas en memoria y la UI las
@@ -958,7 +958,7 @@ pruebas.
 
 | # | Paso | Entregable verificable |
 |---|---|---|
-| B0 | VM `firewall-lab` provisionada: `cloud-init`, `multipass mount`, `SETUP_VM.md` | `multipass shell` entra y el código del Mac se ve dentro |
+| B0 | VM `firewall-lab` provisionada: `cloud-init`, `multipass mount`, `SETUP_VM.md` | `multipass shell` entra y el código del host se ve dentro |
 | B1 | Privilegios: sudoers o capabilities (§4.3), usuario `fwdash`, unidad systemd | `iptables -S` corre sin contraseña como `fwdash` |
 | B2 | `runner.py`: subprocess con allowlist, timeout, env mínimo | test que verifica que un binario fuera de la allowlist lanza `SecurityError` |
 | B3 | `iptables.py`: `ensure_scaffold`, `apply_ruleset`, `read_ruleset`, `read_counters` | cadena `FWDASH_INPUT` creada y poblada desde un script |

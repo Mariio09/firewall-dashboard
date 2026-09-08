@@ -79,7 +79,7 @@ def test_ensure_scaffold_crea_la_cadena_VACIA(firewall: FirewallBackend) -> None
     `apply_ruleset`. El fake enseñaba tres reglas donde iptables tenia una cadena
     vacia, y la mentira vivia exactamente en la ventana entre el arranque del
     servicio y la primera aplicacion: `GET /firewall/status` habria dicho cosas
-    distintas en el Mac y en la VM.
+    distintas en el host y en la VM.
     """
     firewall.ensure_scaffold()
 

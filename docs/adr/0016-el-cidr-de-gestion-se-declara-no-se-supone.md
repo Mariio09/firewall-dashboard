@@ -12,9 +12,9 @@
 management_allowed_cidr: IPvAnyNetwork = Field(default="192.168.64.0/24")
 ```
 
-`192.168.64.0/24` es el rango **habitual** del bridge de Multipass en macOS, no uno
+`192.168.64.0/24` es el rango **habitual** del bridge de Multipass, no uno
 garantizado: cambia si el bridge se recrea, si hay conflicto con otra red, o entre versiones
-y máquinas. En el Mac donde se desarrolla esto la red real es `192.168.252.0/24`, así que el
+y máquinas. En el host donde se desarrolla esto la red real es `192.168.252.0/24`, así que el
 default es **falso**.
 
 Con un default falso, el guardián abre el puerto de gestión a una subred donde no está
@@ -29,7 +29,7 @@ tipos distingue una cosa de la otra.
 
 1. **Dejar el default y documentarlo.** Cero fricción; el riesgo se traslada a que alguien
    lea la documentación en el momento justo.
-2. **Corregir el default al valor de este Mac.** Cambia un valor falso por otro que también
+2. **Corregir el default al valor de este host.** Cambia un valor falso por otro que también
    caducará.
 3. **Quitar el default y exigirlo cuando las reglas son reales.** Igual que
    `JWT_SECRET_KEY`: si falta, la aplicación no arranca y dice cómo consultarlo.

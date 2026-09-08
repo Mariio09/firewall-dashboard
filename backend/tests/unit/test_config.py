@@ -9,7 +9,7 @@ from app.core.config import Settings, get_settings
 
 
 def test_valores_por_defecto_sirven_para_el_bloque_a() -> None:
-    """Sin `.env`, la aplicacion arranca en modo Mac: fake y SQLite local."""
+    """Sin `.env`, la aplicacion arranca en modo Host: fake y SQLite local."""
     settings = Settings(_env_file=None)
     assert settings.app_env == "dev"
     assert settings.firewall_backend == "fake"
@@ -115,8 +115,8 @@ def test_con_backend_fake_el_cidr_es_de_laboratorio_y_se_avisa() -> None:
 def test_el_default_que_provocaba_el_auto_bloqueo_ya_no_existe() -> None:
     """La regresion concreta que cierra el ADR-0016.
 
-    `192.168.64.0/24` era el rango HABITUAL del bridge de Multipass en macOS, no
-    uno garantizado: en el Mac donde se desarrolla esto la red real es otra. Un
+    `192.168.64.0/24` era el rango HABITUAL del bridge de Multipass, no
+    uno garantizado: en el host donde se desarrolla esto la red real es otra. Un
     default que casi siempre acierta es peor que ninguno cuando lo que esta en
     juego es el acceso a la maquina.
     """

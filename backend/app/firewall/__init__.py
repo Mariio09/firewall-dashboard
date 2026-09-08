@@ -15,6 +15,6 @@ Reglas que sostienen el diseño (docs/ARCHITECTURE.md §3):
    El estado final depende solo de la DB (ADR-0002).
 
 Bloques: `spec`, `validators`, `renderer`, `parser`, `base` y `fake` son del
-bloque A (se construyen y testean en el Mac). `runner` e `iptables` son del
+bloque A (se construyen y testean en el host). `runner` e `iptables` son del
 bloque B (tocan el sistema).
 """

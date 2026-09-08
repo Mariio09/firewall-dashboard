@@ -1,7 +1,7 @@
 """Traduce `RuleSpec` a argv de iptables. Funcion pura, sin efectos.
 
 Bloque A3. No ejecuta nada: convierte datos en listas de strings. Por eso se puede
-construir y testear entero en el Mac, y por eso es trivial de verificar.
+construir y testear entero en el host, y por eso es trivial de verificar.
 
 Aqui viven tambien las REGLAS GUARDIAN (docs/ARCHITECTURE.md §0). No estan en la
 base de datos, no se pueden desactivar por API y se emiten siempre en la cabecera

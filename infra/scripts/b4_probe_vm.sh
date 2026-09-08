@@ -65,7 +65,7 @@ seccion "V2. La conexion, vista desde el otro lado"
 GW="$(ip route show default 2>/dev/null | awk '{print $3; exit}')"
 IP_VM="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | cut -d/ -f1 | head -1)"
 CIDR_VM="$(ip -4 -o addr show scope global 2>/dev/null | awk '{print $4}' | head -1)"
-dato "IP de la VM: ${IP_VM:-?}  ·  red: ${CIDR_VM:-?}  ·  gateway (= el Mac): ${GW:-?}"
+dato "IP de la VM: ${IP_VM:-?}  ·  red: ${CIDR_VM:-?}  ·  gateway (= el host): ${GW:-?}"
 
 SS22="$(ss -tnp state established '( sport = :22 )' 2>/dev/null | tail -n +2)"
 if [[ -n "$SS22" ]]; then
@@ -73,7 +73,7 @@ if [[ -n "$SS22" ]]; then
     printf "          %s\n" "$SS22"
     PEER="$(awk '{print $4}' <<< "$SS22" | cut -d: -f1 | head -1)"
     if [[ -n "$GW" && "$PEER" == "$GW" ]]; then
-        mal "y el otro extremo ($PEER) es el gateway: la sesion viene del Mac por la red"
+        mal "y el otro extremo ($PEER) es el gateway: la sesion viene del host por la red"
     fi
 else
     ok "no hay ninguna conexion establecida al puerto 22"
@@ -180,7 +180,7 @@ dato "MANAGEMENT_ALLOWED_CIDR desplegado: ${ENV_CIDR:-no definido}"
 RED_REAL="$(echo "${IP_VM:-0.0.0.0}" | awk -F. '{print $1"."$2"."$3".0/24"}')"
 dato "red real de esta VM (derivada de $IP_VM): $RED_REAL"
 if [[ "$ENV_CIDR" == "$RED_REAL" ]]; then
-    ok "coinciden: el guardian de gestion apunta a la subred donde esta el Mac"
+    ok "coinciden: el guardian de gestion apunta a la subred donde esta el host"
 else
     mal "NO coinciden: el guardian abriria el puerto a una subred que no es la tuya"
 fi

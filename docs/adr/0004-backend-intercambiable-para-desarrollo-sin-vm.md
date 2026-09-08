@@ -5,7 +5,7 @@
 
 ## Contexto
 
-El desarrollo ocurre en macOS (Apple Silicon), pero `iptables` solo existe en
+El desarrollo ocurre en un host que no es Linux (arquitectura ARM), pero `iptables` solo existe en
 Linux. Además, el plan de construcción acordado es explícito: primero la aplicación
 completa (bloque A), después la capa de firewall real de forma aislada (bloque B) y
 por último la interconexión (bloque C).
@@ -29,7 +29,7 @@ tests.
 ### C — Un `Protocol` con dos implementaciones
 `FirewallBackend` como interfaz, `FakeFirewallBackend` en memoria e
 `IptablesBackend` real, seleccionadas por `settings.firewall_backend`.
-**Ventajas:** la aplicación entera corre en el Mac; los tests no necesitan
+**Ventajas:** la aplicación entera corre en el host; los tests no necesitan
 privilegios; el CI ejecuta todo; la frontera queda explícita en el código.
 **Inconvenientes:** el fake puede desviarse de la realidad.
 
@@ -45,7 +45,7 @@ construcción por bloques. Se neutraliza con dos medidas obligatorias:
    guarda en `tests/fixtures/iptables_output/`. El parser y el renderer se escriben
    contra esas fixtures, no contra una idea de cómo debería ser el formato.
 2. **Tests de contrato.** `tests/contract/` contiene una única suite parametrizada
-   por backend. En el Mac se ejecuta solo con el fake; dentro de la VM, con ambos.
+   por backend. En el host se ejecuta solo con el fake; dentro de la VM, con ambos.
    Cualquier divergencia de comportamiento salta en el bloque B, cuando corregirla
    es barato, y no en el bloque C con un frontend ya construido encima.
 
@@ -54,7 +54,7 @@ una suposición y pasa a ser una implementación verificada.
 
 ## Consecuencias
 
-**Positivas:** el MVP completo es demostrable en el Mac, sin VM y sin privilegios —
+**Positivas:** el MVP completo es demostrable en el host, sin VM y sin privilegios —
 suficiente para grabar la demo del portfolio. Los tests corren en cualquier sitio,
 incluido GitHub Actions. El bloque C se reduce a cambiar una variable de entorno.
 La costura documenta la arquitectura mejor que un diagrama.

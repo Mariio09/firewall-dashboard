@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b3_verify.sh — arnes del paso B3: IptablesBackend
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/b3_verify.sh | tee b3.log
 #
 # NO MODIFICA NADA del repo ni del sistema: no toca iptables reales. Crea un
@@ -24,7 +24,7 @@
 # --------------------------------------------------------------------------- #
 # LO QUE ESTE ARNES NO PRUEBA
 #
-# Que iptables de verdad acepte estos argv. Eso no se puede probar en el Mac, y
+# Que iptables de verdad acepte estos argv. Eso no se puede probar en el host, y
 # es el trabajo de los tests de contrato dentro de la VM (B5,
 # `pytest -m requires_iptables`). Lo que si prueba, y es lo que B3 aporta, es que
 # la cadena de montaje entera —settings -> SubprocessRunner -> IptablesBackend ->

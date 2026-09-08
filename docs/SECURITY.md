@@ -206,7 +206,7 @@ producto terminado.
 - **Sin rate limiting en el login** en el MVP. Un atacante en la LAN puede hacer
   fuerza bruta contra `/auth/login`. Previsto para la fase 2 junto con la detección
   de patrones.
-- **Sin HTTPS.** El tráfico entre el Mac y la VM va en claro por una red host-only.
+- **Sin HTTPS.** El tráfico entre el host y la VM va en claro por una red host-only.
   Aceptable en un laboratorio, inaceptable en cualquier otro sitio.
 - **Sin protección CSRF explícita**: se mitiga usando `Authorization: Bearer` en
   lugar de cookies, pero no está auditado.

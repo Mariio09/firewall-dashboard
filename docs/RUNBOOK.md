@@ -19,7 +19,7 @@ La cadena de procesos dentro de la VM lo dice sin ambigüedad:
 bash(8274) <- sudo(8273) <- sshd(8272) <- sshd(8225) <- sshd(2290) <- systemd(1)
 ```
 
-y el otro extremo de la conexión al puerto 22 es `192.168.252.1`, que es el Mac.
+y el otro extremo de la conexión al puerto 22 es `192.168.252.1`, que es el host.
 No hay vsock, ni puertos virtio, ni agente del hipervisor: hay un `authorized_keys`
 con la clave de multipassd. **Un `DROP` que alcance al puerto 22 cierra también la
 puerta de emergencia.**
@@ -73,7 +73,7 @@ sudo iptables -S
 sudo bash /home/ubuntu/app/infra/scripts/panic_reset.sh
 ```
 
-Desde el Mac, en una línea: `make panic`.
+Desde el host, en una línea: `make panic`.
 
 `panic_reset.sh` es quirúrgico: quita los saltos a `FWDASH_*`, vacía y borra esas
 cadenas, y pone las políticas por defecto en `ACCEPT`. **No** toca reglas que no

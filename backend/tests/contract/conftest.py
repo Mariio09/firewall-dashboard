@@ -5,13 +5,13 @@ Como se elige el backend
 La fixture `firewall` esta parametrizada con `pytest_generate_tests` e `indirect`,
 y el parametro `iptables` lleva el marcador `requires_iptables`. Consecuencia:
 
-    pytest                      -> solo el fake       (Mac y VM; addopts lo excluye)
+    pytest                      -> solo el fake       (host y VM; addopts lo excluye)
     pytest -m requires_iptables -> solo iptables real  (dentro de la VM)
 
 Se parametriza con `metafunc.parametrize(..., marks=...)` y no poniendo los marks
 en `@pytest.fixture(params=[...])` porque esta es la forma documentada y estable:
 la suite entera depende de que ese marcador se aplique de verdad. Si no se
-aplicara, la mitad real se ejecutaria tambien en el Mac -- donde no hay iptables
+aplicara, la mitad real se ejecutaria tambien en el host -- donde no hay iptables
 -- y saldria roja por el motivo equivocado.
 """
 

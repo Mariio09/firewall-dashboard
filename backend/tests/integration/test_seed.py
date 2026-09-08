@@ -24,7 +24,7 @@ PASSWORD = "una-contrasena-de-bootstrap"
 def _settings(**cambios: object) -> Settings:
     """Configuracion de prueba que NO lee el `.env` de la maquina.
 
-    `_env_file=None` no es cosmetico: sin el, estos tests pasaban en el Mac —donde
+    `_env_file=None` no es cosmetico: sin el, estos tests pasaban en el host —donde
     `backend/.env` existe y trae `MANAGEMENT_ALLOWED_CIDR`— y fallaban dentro de la
     VM, donde el clon no tiene `.env`: con `app_env="vm"` saltaba el validador del
     ADR-0016 y el test recibia un `ValidationError` en vez del `RuntimeError` que

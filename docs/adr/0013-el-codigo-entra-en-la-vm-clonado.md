@@ -2,12 +2,12 @@
 
 ## Contexto
 
-Hasta aquí, el código fuente vivía en el Mac y se **montaba** en
+Hasta aquí, el código fuente vivía en el host y se **montaba** en
 la VM con `multipass mount`, para editar con el editor de siempre y que el
 proceso corra en la VM sobre los mismos archivos, sin `rsync` ni redespliegues.
 
 En B0 eso dejó de funcionar. El repo está en `~/Downloads/firewall-dashboard`,
-que macOS protege con **TCC**, y `multipassd` corre como demonio de sistema sin
+que el sistema operativo del host protege con **TCC**, y `multipassd` corre como demonio de sistema sin
 permiso para leerla. El síntoma es traicionero: `multipass mount` **devuelve 0**
 —el montaje se registra— y dentro de la VM el directorio sale vacío
 (`ls` da `total 0`) y leer un archivo da `Operation not permitted`.
@@ -21,7 +21,7 @@ multipass ni del sshfs: es un permiso.
    permiso concedido a mano. Rompe el venv: los scripts de `backend/.venv/bin/`
    llevan la ruta absoluta en el shebang y el hook de git su `INSTALL_PYTHON`.
 2. **Acceso total al disco a `multipassd`.** Nada se mueve. A cambio, un permiso
-   manual por máquina, que las actualizaciones de macOS pueden resetear, y darle
+   manual por máquina, que las actualizaciones del sistema operativo pueden resetear, y darle
    a un demonio de fondo acceso al disco entero.
 3. **Clonar el repo dentro de la VM.** Ni permisos ni mudanza. Se pierde la
    edición en vivo: al otro lado hay una copia, no los mismos archivos.
@@ -49,13 +49,13 @@ repo en una carpeta que `multipassd` sí pueda leer.
 - **Habilita** cerrar B0 sin tocar permisos del sistema ni reorganizar el
   entorno de desarrollo, y sin meter credenciales del repo privado en la VM.
 - **Cierra** la edición en vivo. Dentro de la VM hay una copia: editar un
-  archivo en el Mac ya no basta.
+  archivo en el host ya no basta.
 - **Coste asumido**: solo viaja lo **commiteado**. Probar algo en la VM obliga a
   commitear antes. En el bloque B, donde cada paso toca `iptables` de verdad,
   eso es disciplina más que estorbo; en un ciclo de iteración rápida, molesta.
 - **Riesgo**: que la VM se quede en un commit viejo sin que nadie lo note, y se
   depure código que no es el que corre. **Mitigación**: `b0_verify.sh` compara
-  `git rev-parse HEAD` a los dos lados y avisa si el árbol del Mac tiene cambios
+  `git rev-parse HEAD` a los dos lados y avisa si el árbol del host tiene cambios
   sin commitear. Es la misma lección de A5 y A6: lo que no se puede demostrar,
   miente en verde.
 - Obligó a añadir **`git` a `packages`** en `infra/cloud-init.yaml`: la imagen

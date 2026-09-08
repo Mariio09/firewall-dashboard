@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =========================================================================== #
-# a6_verify.sh — verificacion de A6 (frontend) en el Mac
+# a6_verify.sh — verificacion de A6 (frontend) en el host
 #
 #   Desde la raiz del repo:
 #     bash infra/scripts/a6_verify.sh 2>&1 | tee a6-verify.log

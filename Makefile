@@ -12,8 +12,8 @@ VM_IMAGE ?= 24.04
 RAMA     ?= $(shell git --no-optional-locks rev-parse --abbrev-ref HEAD)
 BUNDLE   := /tmp/fwdash.bundle
 
-# El proyecto usa StrEnum, que existe a partir de 3.11. En macOS el `python3` del
-# sistema suele ser 3.9: si es tu caso, instala 3.12 (`brew install python@3.12`)
+# El proyecto usa StrEnum, que existe a partir de 3.11. En algunos sistemas el `python3` del
+# sistema suele ser una version antigua (3.9): si es tu caso, instala 3.12 (`brew install python@3.12`)
 # y lanza `make install PYTHON=python3.12`.
 PYTHON ?= python3
 
@@ -23,7 +23,7 @@ help: ## Muestra esta ayuda
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-22s\033[0m %s\n", $$1, $$2}'
 
 # --------------------------------------------------------------------------- #
-# Bloque A — todo en el Mac, sin VM
+# Bloque A — todo en el host, sin VM
 # --------------------------------------------------------------------------- #
 
 .PHONY: install
@@ -57,7 +57,7 @@ front-check: ## A6: levanta el backend, regenera tipos, typecheck, lint y build
 	bash infra/scripts/a6_verify.sh
 
 .PHONY: test
-test: ## Tests que no necesitan iptables (los que corren en el Mac)
+test: ## Tests que no necesitan iptables (los que corren en el host)
 	cd $(BACKEND) && . .venv/bin/activate && pytest
 
 .PHONY: test-cov
@@ -65,11 +65,11 @@ test-cov: ## Tests con informe de cobertura
 	cd $(BACKEND) && . .venv/bin/activate && pytest --cov=app --cov-report=term-missing --cov-report=html
 
 .PHONY: b2-verify
-b2-verify: ## B2: arnes del runner de subprocess (se ejecuta en el Mac)
+b2-verify: ## B2: arnes del runner de subprocess (se ejecuta en el host)
 	bash infra/scripts/b2_verify.sh
 
 .PHONY: b3-verify
-b3-verify: ## B3: arnes de IptablesBackend contra un iptables simulado (en el Mac)
+b3-verify: ## B3: arnes de IptablesBackend contra un iptables simulado (en el host)
 	bash infra/scripts/b3_verify.sh
 
 .PHONY: lint
@@ -115,7 +115,7 @@ vm-smoke: ## Recorre el arnes de B0 con un multipass falso (no necesita VM)
 
 # El codigo entra en la VM CLONADO, no montado: ver ADR-0013. Se manda por un
 # `git bundle` transferido, asi que no hacen falta credenciales del repo privado
-# dentro de la VM, ni red, ni permisos de TCC sobre la carpeta del Mac.
+# dentro de la VM, ni red, ni permisos de TCC sobre la carpeta del host.
 # Solo viaja lo COMMITEADO.
 
 .PHONY: vm-clone
@@ -244,7 +244,7 @@ recon-reset: ## Deshace en la VM lo que sembro `make recon`
 
 .PHONY: test-vm
 test-vm: ## B5: las dos mitades de la suite (ejecutar DENTRO de la VM)
-	@# Primero la del Mac: si esta falla, lo que venga despues no se puede interpretar.
+	@# Primero la del host: si esta falla, lo que venga despues no se puede interpretar.
 	cd $(BACKEND) && .venv/bin/python -m pytest -q -p no:cacheprovider
 	@# Y la que necesita privilegios. `sudo` aqui y no en el servicio: la unidad
 	@# systemd usa CAP_NET_ADMIN (ADR-0003), pero una sesion interactiva no la tiene.
@@ -287,7 +287,7 @@ b5-verify: ## B5: lanza la suite de contrato contra iptables real DENTRO de la V
 # el recorrido completo de la API al kernel (C4). Pide confirmacion, arma la
 # reversion ANTES de conmutar y limpia lo que siembra.
 #
-# Necesita que la VM tenga EL MISMO commit que el Mac y que /opt este desplegado:
+# Necesita que la VM tenga EL MISMO commit que el host y que /opt este desplegado:
 #   git commit ... && make vm-sync && make vm-deploy && make c-verify
 # --------------------------------------------------------------------------- #
 

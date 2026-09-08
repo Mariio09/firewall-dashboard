@@ -12,7 +12,7 @@ pueda dejarte fuera. Cubren tres cosas: el tráfico ya establecido, el `loopback
 B4 midió que eso no basta en esta máquina. `multipass shell` y `multipass exec` **entran por
 SSH**, por la misma red que el firewall filtra: no hay canal fuera de banda. El árbol de
 procesos de una sesión de multipass es `bash <- sudo <- sshd <- sshd <- sshd <- systemd`, y
-el otro extremo de la conexión al 22 es el Mac.
+el otro extremo de la conexión al 22 es el host.
 
 Consecuencia: una regla de usuario tan trivial como `DROP tcp --dport 22` se aplica **sin una
 sola queja** y se lleva por delante la única vía de rescate. Está medido, no supuesto —

@@ -49,7 +49,7 @@ por la librería, para que siga probando el ataque aunque PyJWT cambie— y comp
 rechaza. Además se exigen los claims `exp`, `iat`, `sub` y `type` al decodificar: un JWT sin
 `exp` es una llave que no caduca nunca.
 
-**Negativas:** hace falta `uv sync` en el Mac y `python-jose` desaparece del lockfile. PyJWT
+**Negativas:** hace falta `uv sync` en el host y `python-jose` desaparece del lockfile. PyJWT
 avisa con `InsecureKeyLengthWarning` si la clave HMAC baja de 32 bytes, lo que aparece en los
 tests que firman con claves cortas a propósito; la clave real la genera A1 con 64 caracteres
 hexadecimales.

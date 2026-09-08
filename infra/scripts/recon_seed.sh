@@ -6,7 +6,7 @@
 #     sudo bash /tmp/recon_seed.sh          # cargar
 #     sudo bash /tmp/recon_seed.sh reset    # deshacer
 #
-#   Desde el Mac se lanza solo, dentro de `make recon`.
+#   Desde el host se lanza solo, dentro de `make recon`.
 #
 # POR QUE EXISTE
 # Una VM recien creada tiene las tres cadenas vacias y las politicas en ACCEPT.

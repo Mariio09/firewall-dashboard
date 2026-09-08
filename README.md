@@ -46,7 +46,7 @@ es exactamente el permiso necesario y nada más.
 
 **Backend de firewall intercambiable** ([ADR-0004](docs/adr/0004-backend-intercambiable-para-desarrollo-sin-vm.md)).
 `FIREWALL_BACKEND=fake|iptables`. El MVP completo se construye y se demuestra en
-macOS, sin VM y sin privilegios.
+el host, sin VM y sin privilegios.
 
 **Las reglas se comparan por estructura, nunca por texto** ([ADR-0006](docs/adr/0006-comparar-reglas-por-estructura.md)).
 iptables reescribe cada regla al guardarla: `--dport 22` vuelve como
@@ -87,7 +87,7 @@ en CI si alguien las cruza.
 ## Arquitectura
 
 ```
-┌──────────────── macOS ─────────────────┐   ┌──────── VM: firewall-lab ─────────┐
+┌──────────────── HOST  ─────────────────┐   ┌──────── VM: firewall-lab ─────────┐
 │                                        │   │                                   │
 │   React + TypeScript (Vite)            │   │   FastAPI                         │
 │         │                              │   │     │                             │
@@ -109,7 +109,7 @@ Detalle completo en [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Puesta en marcha
 
-### Bloque A — todo en el Mac, sin VM
+### Bloque A — todo en el host, sin VM
 
 No hace falta Multipass ni privilegios: el backend corre con un firewall en
 memoria.

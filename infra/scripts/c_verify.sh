@@ -2,7 +2,7 @@
 # =========================================================================== #
 # c_verify.sh — arnes del BLOQUE C: la interconexion, de punta a punta
 #
-#   Ejecutar EN EL MAC, desde la raiz del repo:
+#   Ejecutar EN EL HOST, desde la raiz del repo:
 #     bash infra/scripts/c_verify.sh | tee c.log
 #
 #   O bien:  make c-verify           (una fase suelta: make c-verify FASE=c3)
@@ -16,14 +16,14 @@
 # --------------------------------------------------------------------------- #
 # LAS CINCO FASES, Y QUE DEMUESTRA CADA UNA
 #
-#   C1  red        el Mac llega al 8000 de la VM y CORS deja pasar al frontend
+#   C1  red        el host llega al 8000 de la VM y CORS deja pasar al frontend
 #   C0  el cambio  FIREWALL_BACKEND=iptables: la aplicacion escribe de verdad
 #   C2  arranque   se vacia la cadena a mano, se reinicia, y vuelve sola (ADR-0018)
 #   C3  drift      se toca iptables a mano y la API lo señala; un apply lo arregla
 #   C4  recorrido  regla creada por la API -> visible en `iptables -S` de la VM
 #
 # C1 va ANTES que C0 a proposito: es la unica fase que no modifica nada, y si el
-# Mac no llega al 8000 con el backend `fake` tampoco va a llegar despues. Un
+# host no llega al 8000 con el backend `fake` tampoco va a llegar despues. Un
 # fallo de red diagnosticado antes de conmutar es un fallo de red; diagnosticado
 # despues, es media hora buscandolo en el sitio equivocado.
 #
@@ -59,7 +59,7 @@ dato()    { printf "  %sDATO%s    %s\n" "$A" "$N" "$1"; }
 ok()      { printf "  %sOK%s      %s\n" "$V" "$N" "$1"; ACIERTOS=$((ACIERTOS+1)); }
 fallo()   { printf "  %sFALLO%s   %s\n" "$R" "$N" "$1"; FALLOS=$((FALLOS+1)); }
 
-# macOS no trae `timeout`, y aqui hace falta de verdad: NINGUNA llamada a la VM
+# Este host no trae `timeout`, y aqui hace falta de verdad: NINGUNA llamada a la VM
 # puede colgarse en silencio. Paso el 2026-09-04 en la primera ejecucion real:
 # el `systemctl stop` del temporizador de rescate se quedo clavado y el arnes con
 # el, sin decir nada, hasta que salto el propio rescate. Un arnes colgado no
@@ -136,7 +136,7 @@ hace() { [[ " $FASES " == *" $1 "* ]]; }
 seccion "0. Pre-vuelo (nada se modifica todavia)"
 # =========================================================================== #
 
-command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el Mac." >&2; exit 1; }
+command -v multipass >/dev/null || { echo "ERROR: esto se ejecuta en el host." >&2; exit 1; }
 [[ "$(multipass info "$VM" 2>/dev/null | awk '/^State:/{print $2}')" == "Running" ]] \
     || { echo "ERROR: la VM no esta corriendo." >&2; exit 1; }
 
@@ -185,14 +185,14 @@ ok "ufw no esta filtrando: lo que pase en INPUT es atribuible a este arnes"
 # EL CODIGO QUE CORRE ES EL QUE SE ESCRIBIO. Dos comprobaciones distintas: el
 # clon (donde estan los tests) y el DESPLIEGUE de /opt (lo que ejecuta el
 # servicio, y por tanto quien tiene o no la reconciliacion de arranque de C2).
-HEAD_MAC="$(git --no-optional-locks rev-parse HEAD)"
+HEAD_HOST="$(git --no-optional-locks rev-parse HEAD)"
 HEAD_VM="$(en_vm git -C /home/ubuntu/app rev-parse HEAD 2>/dev/null | tr -d '\r')"
-if [[ "$HEAD_MAC" != "$HEAD_VM" ]]; then
-    echo "ERROR: la VM tiene otro commit.  Mac: ${HEAD_MAC:0:12}  VM: ${HEAD_VM:0:12}" >&2
+if [[ "$HEAD_HOST" != "$HEAD_VM" ]]; then
+    echo "ERROR: la VM tiene otro commit.  Host: ${HEAD_HOST:0:12}  VM: ${HEAD_VM:0:12}" >&2
     echo "       Commitea y luego: make vm-sync" >&2
     exit 1
 fi
-ok "el clon de la VM esta en el mismo commit que el Mac (${HEAD_MAC:0:12})"
+ok "el clon de la VM esta en el mismo commit que el host (${HEAD_HOST:0:12})"
 
 # Y lo que ese OK NO dice: dos maquinas pueden coincidir en un commit VIEJO. Si
 # el codigo que se va a probar sigue sin commitear, la comparacion de arriba sale
@@ -200,19 +200,19 @@ ok "el clon de la VM esta en el mismo commit que el Mac (${HEAD_MAC:0:12})"
 # arnes (2026-09-04): commit igual, y `c_vm.sh` sin desplegar.
 SUCIO="$(git --no-optional-locks status --porcelain | grep -v '\.log$')"
 if [[ -n "$SUCIO" ]]; then
-    dato "hay cambios SIN COMMITEAR en el Mac. No viajan a la VM (ADR-0013):"
+    dato "hay cambios SIN COMMITEAR en el host. No viajan a la VM (ADR-0013):"
     sed 's/^/            /' <<< "$SUCIO"
     dato "  si alguno de esos es el codigo que quieres probar, commitealo y:"
     dato "  make vm-sync \&\& make vm-deploy"
 fi
 
 DESPLEGADO="$(en_vm cat "$APP/.desplegado" 2>/dev/null | tr -d '\r')"
-if [[ "$DESPLEGADO" != "${HEAD_MAC:0:7}" ]]; then
-    echo "ERROR: /opt tiene el commit '$DESPLEGADO' y el Mac ${HEAD_MAC:0:7}." >&2
+if [[ "$DESPLEGADO" != "${HEAD_HOST:0:7}" ]]; then
+    echo "ERROR: /opt tiene el commit '$DESPLEGADO' y el host ${HEAD_HOST:0:7}." >&2
     echo "       Lo que corre el servicio es /opt, no el clon:  make vm-deploy" >&2
     exit 1
 fi
-ok "el despliegue de /opt es el commit del Mac ($DESPLEGADO)"
+ok "el despliegue de /opt es el commit del host ($DESPLEGADO)"
 
 if en_vm test -f "$C_VM"; then
     ok "presente en la VM: $C_VM"
@@ -261,16 +261,16 @@ CUERPO_LOGIN="$(curl -fsS --max-time 15 -X POST "$API/auth/login" \
     -d "{\"username\":\"admin\",\"password\":\"$PASS_ADMIN\"}" 2>/dev/null)"
 TOKEN="$(printf '%s' "$CUERPO_LOGIN" | campo "d['access_token']")"
 if [[ -n "$TOKEN" ]]; then
-    ok "login contra la API de la VM DESDE EL MAC: token obtenido"
+    ok "login contra la API de la VM DESDE EL HOST: token obtenido"
 else
-    echo "ERROR: no se pudo hacer login en $API/auth/login desde el Mac." >&2
+    echo "ERROR: no se pudo hacer login en $API/auth/login desde el host." >&2
     echo "       Es lo primero que tiene que funcionar: sin token no hay bloque C." >&2
     exit 1
 fi
 
 echo
 echo "  ${A}Lo que va a pasar en $VM (fases: $FASES):${N}"
-hace c1 && echo "    C1  se apunta frontend/.env a $IP_VM (en el MAC, con copia de seguridad)"
+hace c1 && echo "    C1  se apunta frontend/.env a $IP_VM (en el HOST, con copia de seguridad)"
 hace c0 && echo "    C0  FIREWALL_BACKEND=iptables en el .env de la VM y REINICIO del servicio"
 hace c0 && echo "        -> a partir de ahi la aplicacion escribe reglas REALES por su cuenta"
 hace c2 && echo "    C2  se vacia FWDASH_INPUT a mano y se reinicia el servicio"
@@ -289,15 +289,15 @@ fi
 
 # =========================================================================== #
 if hace c1; then
-seccion "C1. La red: del Mac a la VM, y del navegador al backend"
+seccion "C1. La red: del host a la VM, y del navegador al backend"
 # =========================================================================== #
 
-# 1. El Mac llega al 8000. El curl del arnes de B1 corria DENTRO de la VM: esto
+# 1. El host llega al 8000. El curl del arnes de B1 corria DENTRO de la VM: esto
 #    es lo primero que sale de verdad de la maquina.
 if curl -fsS --max-time 10 -o /dev/null "http://$IP_VM:8000/health"; then
-    ok "el Mac llega a http://$IP_VM:8000/health"
+    ok "el host llega a http://$IP_VM:8000/health"
 else
-    fallo "el Mac NO llega al 8000 de la VM: sin esto no hay nada que interconectar"
+    fallo "el host NO llega al 8000 de la VM: sin esto no hay nada que interconectar"
 fi
 
 if curl -fsS --max-time 10 -o /dev/null "$API/health"; then
@@ -340,7 +340,7 @@ else
     sed 's/^/            /' <<< "$PREFLIGHT" | head -12
 fi
 
-# 4. Apuntar el frontend a la VM. Es un archivo del MAC, no versionado, y se
+# 4. Apuntar el frontend a la VM. Es un archivo del HOST, no versionado, y se
 #    guarda copia: es lo unico de este arnes que toca el repo de Mario.
 ENV_FRONT="frontend/.env"
 DESTINO="VITE_API_BASE_URL=http://$IP_VM:8000/api/v1"
@@ -698,7 +698,7 @@ fi
 
 # =========================================================================== #
 if hace c4; then
-seccion "C4. El recorrido completo: de la API del Mac al kernel de la VM"
+seccion "C4. El recorrido completo: de la API del host al kernel de la VM"
 # =========================================================================== #
 
 # Es el mismo camino que hace la UI: navegador -> HTTP -> FastAPI -> renderer ->

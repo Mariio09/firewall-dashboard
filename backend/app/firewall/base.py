@@ -5,7 +5,7 @@ implementaciones intercambiables (`fake.FakeFirewallBackend` e
 `iptables.IptablesBackend`), y `api/deps.get_firewall_backend()` elige una u otra
 segun `settings.firewall_backend`.
 
-Consecuencia practica: el MVP completo se construye y se demuestra en el Mac, sin
+Consecuencia practica: el MVP completo se construye y se demuestra en el host, sin
 VM y sin privilegios (bloque A). El bloque C se reduce a cambiar una variable de
 entorno.
 

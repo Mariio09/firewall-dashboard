@@ -2,7 +2,7 @@
 # =========================================================================== #
 # c_vm.sh — la mitad del bloque C que solo se puede hacer DENTRO de la VM.
 #
-#   No lo lances a mano: lo orquesta `c_verify.sh` desde el Mac.
+#   No lo lances a mano: lo orquesta `c_verify.sh` desde el host.
 #     uso: c_vm.sh <subcomando> [args]
 #
 # Subcomandos:

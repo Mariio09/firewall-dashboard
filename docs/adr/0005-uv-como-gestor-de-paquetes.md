@@ -5,7 +5,7 @@
 
 ## Contexto
 
-`python -m venv` no funciona en la máquina de desarrollo (macOS, Apple Silicon).
+`python -m venv` no funciona en la máquina de desarrollo (arquitectura ARM).
 `ensurepip` falla siempre, con el mismo error:
 
 ```
@@ -64,10 +64,10 @@ importa para cualquiera que lo clone.
 de fallar a tardar segundos.
 
 **Negativas:** el entorno usa el CPython que gestiona `uv`
-(`~/.local/share/uv/python/cpython-3.12-macos-aarch64-none`) y no el de Homebrew, así
+(un CPython aislado, propio de `uv`, bajo `~/.local/share/uv/python/`) y no el de Homebrew, así
 que un `python3` suelto en la terminal no es el mismo intérprete que el del proyecto.
 Y la causa raíz sigue sin diagnosticar: el problema está esquivado, no resuelto.
 
 **Qué invalidaría esta decisión:** que `python -m venv` volviera a funcionar en la
-máquina (por una actualización de macOS o de pip). Aun así, `uv` se quedaría por
+máquina (por una actualización del sistema operativo o de pip). Aun así, `uv` se quedaría por
 velocidad; lo que cambiaría es que dejaría de ser obligatorio.

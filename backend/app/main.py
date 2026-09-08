@@ -59,7 +59,7 @@ def _fabrica_de_sesiones(application: FastAPI) -> Callable[[], Session]:
     tests inyectan la suya en `create_app` para que la reconciliacion de arranque
     escriba en la base en memoria y no en la que diga el `.env` de la maquina:
     esa fue la segunda trampa de B5 -- `test_seed.py` leia el `.env` real y salia
-    verde en el Mac y rojo en la VM.
+    verde en el host y rojo en la VM.
     """
     fabrica: Callable[[], Session] | None = getattr(application.state, "session_factory", None)
     return fabrica if fabrica is not None else get_sessionmaker()

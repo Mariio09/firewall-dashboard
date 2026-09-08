@@ -2,7 +2,7 @@
 # =========================================================================== #
 # b4_bloqueo.sh — provoca el auto-bloqueo DENTRO de la VM. Paso 2 de B4.
 #
-#   No lo lances a mano: lo orquesta `b4_verify.sh` desde el Mac.
+#   No lo lances a mano: lo orquesta `b4_verify.sh` desde el host.
 #     uso: b4_bloqueo.sh <guardian|ssh|cidr> <segundos_de_ventana>
 #
 # ESTO SI MODIFICA REGLAS REALES. Todo lo que hace es reversible y la reversion
@@ -205,7 +205,7 @@ iptables -L FWDASH_INPUT -v -n -x --line-numbers 2>/dev/null | sed 's/^/    /' |
 # preguntar necesitaria una sesion nueva, que es justo lo que esta cortado. Asi
 # que la medida tardia se toma aqui dentro, que es el unico sitio con acceso.
 sleep 30
-registrar "contadores a los 30s del bloqueo (con trafico del Mac ya encima):"
+registrar "contadores a los 30s del bloqueo (con trafico del host ya encima):"
 TABLA="$(iptables -L FWDASH_INPUT -v -n -x 2>/dev/null)"
 printf '%s\n' "$TABLA" | sed 's/^/    /' | tee -a "$LOG" >/dev/null
 PKTS_GUARDIAN="$(awk '/fwdash:guardian:management/{print $1}' <<< "$TABLA")"

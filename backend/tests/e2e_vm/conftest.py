@@ -1,7 +1,7 @@
 """Fixtures de la suite que solo tiene sentido dentro de la VM.
 
 Todo lo de este paquete lleva `pytestmark = pytest.mark.requires_iptables`, asi
-que en el Mac ni se recoge. Lo que se prueba aqui es lo que la suite de contrato
+que en el host ni se recoge. Lo que se prueba aqui es lo que la suite de contrato
 NO puede probar: lo que hay por debajo del Protocol -- los saltos en las cadenas
 del sistema, los contadores con trafico encima y la comparacion cara a cara del
 fake contra iptables de verdad.

@@ -37,7 +37,7 @@ PREFIJO_DE_PRUEBA = "FWTEST"
 #: Red de laboratorio, deliberadamente NO la del bridge real. Los guardianes de
 #: esta suite no tienen que proteger nada: las cadenas de prueba no contienen
 #: ningun DROP que pueda alcanzar al administrador (invariante 2). Fijarla hace
-#: que la suite diga lo mismo en el Mac y en la VM, que es lo que se compara.
+#: que la suite diga lo mismo en el host y en la VM, que es lo que se compara.
 CIDR_DE_GESTION = "192.168.64.0/24"
 PUERTO_DE_GESTION = 8000
 #: Declarado a proposito: el guardian del ADR-0017 forma parte del contrato desde

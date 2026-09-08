@@ -5,7 +5,7 @@ Bloque A1+. Aqui viven dos cosas:
 - `build_firewall_backend()`, que devuelve `FakeFirewallBackend` o
   `IptablesBackend` segun `settings.firewall_backend`, y `get_firewall_backend()`,
   que guarda UNA instancia por aplicacion en `app.state`. Esas dos funciones son
-  lo que permite correr el MVP completo en el Mac y lo que hace el bloque C casi
+  lo que permite correr el MVP completo en el host y lo que hace el bloque C casi
   trivial.
 - El RBAC (A4): `CurrentUser` resuelve el token en usuario, y `require_role()`
   fabrica la dependencia que exige un rol minimo. Un endpoint protegido se escribe
@@ -90,7 +90,7 @@ def build_firewall_backend(settings: Settings) -> FirewallBackend:
     """Construye el backend de firewall configurado.
 
     Estas lineas son la costura entera del proyecto (ADR-0004): con
-    `FIREWALL_BACKEND=fake` la aplicacion funciona de punta a punta en el Mac,
+    `FIREWALL_BACKEND=fake` la aplicacion funciona de punta a punta en el host,
     sin VM y sin privilegios, y el bloque C consiste en cambiar esa variable.
 
     Los parametros de las reglas guardian salen de `settings` y no de los valores

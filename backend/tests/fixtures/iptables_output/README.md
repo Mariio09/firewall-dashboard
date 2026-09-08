@@ -30,6 +30,6 @@ todos los comandos con `LC_ALL=C`.
 
 No hay nada que anonimizar y **no se deben tocar**: la VM se capturó virgen, así que todas
 las reglas salieron de `recon_seed.sh`. `8.8.8.8`, `10.0.0.0/8` y `192.168.64.0/24` son
-literales inventados (la última es la subred host-only por defecto de Multipass en macOS,
-igual en cualquier Mac). Editarlas solo serviría para que las fixtures dejaran de ser
+literales inventados (la última es la subred host-only por defecto de Multipass,
+igual en cualquier host con esa configuración). Editarlas solo serviría para que las fixtures dejaran de ser
 literales, que es justo lo que las hace valer.

@@ -5,7 +5,7 @@ cacheado. Si falta una variable obligatoria, la app NO debe arrancar:
 fallar en el arranque siempre es mejor que fallar en la primera peticion.
 
 Variable clave: FIREWALL_BACKEND ('fake' | 'iptables'), el interruptor que
-permite correr todo el bloque A en el Mac sin VM. Ver docs/ARCHITECTURE.md §4."""
+permite correr todo el bloque A en el host sin VM. Ver docs/ARCHITECTURE.md §4."""
 
 from __future__ import annotations
 

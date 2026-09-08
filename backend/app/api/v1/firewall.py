@@ -6,7 +6,7 @@ exige el rol.
 `preview` no es un modo escondido ni un endpoint que pueda divergir del apply: es
 la misma reconciliacion con `dry_run=True`, y esta en el contrato porque ver el
 argv exacto antes de ejecutarlo es la mitigacion nº2 del problema del auto-bloqueo
-(docs/ARCHITECTURE.md §0). Contra el fake ya es demostrable en el Mac, sin VM.
+(docs/ARCHITECTURE.md §0). Contra el fake ya es demostrable en el host, sin VM.
 """
 
 from __future__ import annotations
