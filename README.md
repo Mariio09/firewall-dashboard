@@ -6,8 +6,8 @@
 
 Proyecto de portfolio de ciberseguridad defensiva.
 
-![estado](https://img.shields.io/badge/estado-en%20desarrollo-orange)
-![fase](https://img.shields.io/badge/fase-bloque%20C%20%C2%B7%20interconexi%C3%B3n-blue)
+![estado](https://img.shields.io/badge/estado-Terminado)
+![fase](https://img.shields.io/badge/fase-V1.0.0)
 ![python](https://img.shields.io/badge/python-3.11+-green)
 ![licencia](https://img.shields.io/badge/licencia-MIT-lightgrey)
 
