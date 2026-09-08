@@ -8,10 +8,27 @@
 
 ## Requisitos
 
-Multipass (arquitectura ARM):
+Multipass es la misma herramienta en Linux, macOS y Windows; solo cambia cómo se instala.
+
+**macOS (arquitectura ARM):**
 
 ```bash
 brew install --cask multipass
+multipass version
+```
+
+**Windows:** ver [la sección de Windows en el README](../README.md#windows). Multipass
+se instala en Windows, no dentro de WSL2, porque necesita Hyper-V.
+
+```powershell
+winget install Canonical.Multipass
+multipass version
+```
+
+**Linux:**
+
+```bash
+sudo snap install multipass
 multipass version
 ```
 

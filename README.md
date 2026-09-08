@@ -142,6 +142,40 @@ make gen-api      # regenera frontend/src/api/schema.d.ts
 make front-check  # backend + gen:api + typecheck + lint + build, todo de una
 ```
 
+### Windows
+
+El `Makefile` y los scripts de `infra/scripts/` están escritos en bash, así que
+la vía más simple es correr todo dentro de **WSL2** (Windows Subsystem for
+Linux): ahí el resto de esta guía —Bloque A, `make`, Multipass— funciona
+igual que en Linux/macOS, sin traducir ningún comando.
+
+```powershell
+wsl --install -d Ubuntu     # una vez; reinicia si te lo pide
+```
+
+Dentro de la distribución Ubuntu de WSL2:
+
+```bash
+sudo apt update && sudo apt install -y python3-venv python3-pip make
+# clona el repo y sigue el Bloque A tal cual
+```
+
+Multipass se instala en Windows, no dentro de WSL2 (necesita Hyper-V):
+
+```powershell
+winget install Canonical.Multipass
+```
+
+El binario queda en el `PATH` de Windows y WSL2 lo ve automáticamente, así que
+`make vm-provision`, `make vm-sync` y el resto de comandos de la VM ([`docs/SETUP_VM.md`](docs/SETUP_VM.md))
+funcionan sin cambios desde la misma terminal de WSL2.
+
+Si prefieres no instalar WSL2, la alternativa es **Git Bash** (incluido en
+[Git for Windows](https://git-scm.com/download/win)): cubre bash y los scripts,
+pero `make` no viene incluido — instálalo aparte (`choco install make` con
+[Chocolatey](https://chocolatey.org/)) o ejecuta a mano los comandos que hay
+detrás de cada target del `Makefile`.
+
 ### Bloque B/C — la VM
 
 Ver [`docs/SETUP_VM.md`](docs/SETUP_VM.md). Resumen:
