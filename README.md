@@ -221,7 +221,7 @@ make panic          # emergencia: recuperar el acceso
 |---|---|---|
 | **A** | Aplicación completa contra firewall en memoria | ✅ **cerrado** — núcleo, capa `firewall/`, auth, API de reglas y frontend |
 | **B** | Capa de iptables real, privilegios, runbook | ✅ **cerrado** — runner con allowlist, `IptablesBackend`, capabilities, el auto-bloqueo **provocado y medido** (B4) y la suite de contrato contra iptables real (B5) |
-| **C** | Interconexión, drift real, recorrido completo | 🟡 **en curso** — código y arnés listos (`make c-verify`); cierra con las capturas y el tag `v0.1.0-mvp` |
+| **C** | Interconexión, drift real, recorrido completo | ✅ **cerrado** — código y arnés listos (`make c-verify`); cierra con las capturas y el tag `v0.1.0-mvp` |
 | Fase 2 | Logging de paquetes bloqueados, SQLite, rollback con confirmación | ⬜ |
 | Fase 3 | Dashboard con gráficas por IP / puerto / tiempo | ⬜ |
 | Fase 4 | Detección de patrones (X intentos en Y minutos), alertas | ⬜ |
