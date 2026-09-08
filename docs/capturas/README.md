@@ -22,5 +22,5 @@ descomenta el bloque de la sección *Capturas* del `README.md`.
   enseña el CIDR de gestión y el puerto: es topología de una red host-only de
   laboratorio, y es aceptable; cualquier otra cosa, no.
 - Recorta la ventana, no la pantalla entera.
-- Modo claro: el CSS del proyecto se diseñó en claro y es como se lee mejor
-  incrustado en un README de GitHub.
+- Tema oscuro: es el único tema del frontend (ADR-0012). No hay modo claro que
+  activar; la captura debe verse como la app se ve de verdad.
